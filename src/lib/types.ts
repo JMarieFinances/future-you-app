@@ -23,6 +23,22 @@ export type PlanData = {
   goals: Goal[];
 };
 
+export type Purchase = {
+  id: string;
+
+  name: string;
+
+  amount: number;
+
+  category: string;
+
+  date: string;
+
+  notes?: string;
+
+  budgetType: "personal" | "household" | "business";
+};
+
 export type Household = {
   id: string;
   name: string;
@@ -57,6 +73,8 @@ export type ThemeType =
 export type AppData = {
   personalPlan: PlanData;
 
+  purchases: Purchase[];
+
   households: Household[];
 
   businesses: Business[];
@@ -66,3 +84,4 @@ export type AppData = {
     notifications: NotificationSettings;
   };
 };
+

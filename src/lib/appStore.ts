@@ -20,6 +20,8 @@ let appData: AppData = {
     goals: [],
   },
 
+  purchases: [],
+  
   households: [],
 
   businesses: [],
@@ -41,7 +43,6 @@ let appData: AppData = {
 export function getAppData() {
   return appData;
 }
-
 
 export async function loadAppData() {
   const saved = await AsyncStorage.getItem(STORAGE_KEY);
