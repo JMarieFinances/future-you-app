@@ -1,70 +1,142 @@
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-
-import { setTheme, themes, type ThemeType } from "@/lib/settingsStore";
+import AppCard from "@/components/ui/AppCard";
+import AppPage from "@/components/ui/AppPage";
+import AppRow from "@/components/ui/AppRow";
+import AppText from "@/components/ui/AppText";
+import MetricCard from "@/components/ui/MetricCard";
+import PageHeader from "@/components/ui/PageHeader";
+import {
+  getTheme,
+  getThemeConfig,
+  setTheme,
+  themes,
+  type ThemeType,
+} from "@/lib/settingsStore";
+import { useTheme } from "@/lib/useTheme";
+import { useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
 
 export default function ThemesScreen() {
+  const { colors } = useTheme();
   const [selectedTheme, setSelectedTheme] =
     useState<ThemeType>("future-you");
 
-  const currentThemeInfo = themes.find(
-    (theme) => theme.id === selectedTheme
-  );
+  useEffect(() => {
+    setSelectedTheme(getTheme());
+  }, []);
 
-  const handleSelect = (theme: ThemeType) => {
+  const currentTheme = getThemeConfig();
+
+  const handleSelect = async (theme: ThemeType) => {
+    await setTheme(theme);
     setSelectedTheme(theme);
-    setTheme(theme);
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
-      <Text style={{ fontSize: 32, fontWeight: "bold" }}>Themes</Text>
+    <AppPage>
+      <PageHeader
+        title="Themes"
+        subtitle="Make Future You feel like your own financial workspace."
+      />
 
-      <View style={cardStyle}>
-        <Text style={cardTitle}>Current Theme</Text>
+      <AppCard>
+        <AppRow>
+          <View>
+            <AppText variant="muted">Current Theme</AppText>
+            <AppText variant="section">
+              {currentTheme.emoji} {currentTheme.name}
+            </AppText>
+            <AppText variant="muted">{currentTheme.description}</AppText>
+          </View>
 
-        <Text style={{ fontSize: 18 }}>
-          {currentThemeInfo?.emoji} {currentThemeInfo?.name}
-        </Text>
+          <AppText variant="bold">Active</AppText>
+        </AppRow>
+      </AppCard>
+
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <MetricCard
+            title="Style"
+            value={currentTheme.name}
+            caption="Workspace mode"
+            tone="primary"
+          />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <MetricCard
+            title="Accent"
+            value="Live"
+            caption="Applied across app"
+            tone="success"
+          />
+        </View>
       </View>
 
-      {themes.map((theme) => (
-        <Pressable
-          key={theme.id}
-          onPress={() => handleSelect(theme.id as ThemeType)}
-          style={[
-            cardStyle,
-            selectedTheme === theme.id && {
-              borderWidth: 3,
-              backgroundColor: "#f0fdf4",
-            },
-          ]}
-        >
-          <Text style={{ fontSize: 22, fontWeight: "bold" }}>
-            {theme.emoji} {theme.name}
-          </Text>
+      <AppCard>
+        <AppText variant="section">Theme Library</AppText>
 
-          <Text>{theme.description}</Text>
+        <View style={{ marginTop: 12, gap: 12 }}>
+          {themes.map((theme) => {
+            const isSelected = selectedTheme === theme.id;
 
-          {selectedTheme === theme.id ? (
-            <Text style={{ marginTop: 8, fontWeight: "bold" }}>
-              Selected
-            </Text>
-          ) : null}
-        </Pressable>
-      ))}
-    </ScrollView>
+            return (
+              <Pressable
+                key={theme.id}
+                onPress={() => handleSelect(theme.id)}
+                style={{
+                  borderWidth: isSelected ? 3 : 1,
+                  borderColor: isSelected ? colors.primary : colors.border,
+                  borderRadius: 18,
+                  padding: 16,
+                }}
+              >
+                <AppRow>
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="section">
+                      {theme.emoji} {theme.name}
+                    </AppText>
+                    <AppText variant="muted">{theme.description}</AppText>
+                  </View>
+
+                  {isSelected ? <AppText variant="bold">Selected</AppText> : null}
+                </AppRow>
+
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+                  <Swatch color={theme.colors.background} />
+                  <Swatch color={theme.colors.card} />
+                  <Swatch color={theme.colors.primary} />
+                  <Swatch color={theme.colors.success} />
+                  <Swatch color={theme.colors.warning} />
+                  <Swatch color={theme.colors.danger} />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </AppCard>
+
+      <AppCard>
+        <AppText variant="section">Launch Note</AppText>
+        <AppText variant="muted">
+          Theme changes are saved and used by the new launch screens. Older
+          screens will update as they are moved into the shared UI system.
+        </AppText>
+      </AppCard>
+    </AppPage>
   );
 }
 
-const cardStyle = {
-  borderWidth: 1,
-  borderRadius: 16,
-  padding: 18,
-};
-
-const cardTitle = {
-  fontSize: 22,
-  fontWeight: "bold" as const,
-  marginBottom: 8,
-};
+function Swatch({ color }: { color: string }) {
+  return (
+    <View
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 999,
+        backgroundColor: color,
+        borderWidth: 1,
+        borderColor: "rgba(0,0,0,.15)",
+      }}
+    />
+  );
+}

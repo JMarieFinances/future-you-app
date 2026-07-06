@@ -1,114 +1,114 @@
-import { addHousehold, getHouseholds } from "@/lib/householdStore";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import HouseholdDashboard from "@/components/household/HouseholdDashboard";
+import HouseholdList from "@/components/household/HouseholdList";
+import HouseholdSetup from "@/components/household/HouseholdSetup";
+import NewHouseholdTransaction from "@/components/household/NewHouseholdTransaction";
+import { loadAppData } from "@/lib/appStore";
+import { getHouseholds } from "@/lib/householdStore";
+import { deletePurchase } from "@/lib/purchaseStore";
+import { Household, Purchase } from "@/lib/types";
+import { useEffect, useState } from "react";
+
+type ViewMode = "list" | "setup" | "dashboard" | "transaction";
 
 export default function HouseholdsScreen() {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [members, setMembers] = useState("1");
+  const [selectedHousehold, setSelectedHousehold] =
+    useState<Household | null>(null);
+
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<Purchase | null>(null);
+
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [, forceUpdate] = useState(0);
 
-  const households = getHouseholds();
+  useEffect(() => {
+    const loadData = async () => {
+      await loadAppData();
+      forceUpdate((prev) => prev + 1);
+    };
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+    loadData();
+  }, []);
 
-    await addHousehold({
-      id: Date.now().toString(),
-      name,
-      description,
-      members: Number(members) || 1,
-    });
+  if (selectedHousehold && viewMode === "setup") {
+    return (
+      <HouseholdSetup
+        household={selectedHousehold}
+        onBack={() => setViewMode("dashboard")}
+        onSave={(updated) => {
+          setSelectedHousehold(updated);
+          setViewMode("dashboard");
+          forceUpdate((prev) => prev + 1);
+        }}
+      />
+    );
+  }
 
-    setName("");
-    setDescription("");
-    setMembers("1");
-    forceUpdate((prev) => prev + 1);
-  };
+  if (selectedHousehold && viewMode === "dashboard") {
+    return (
+      <HouseholdDashboard
+        household={selectedHousehold}
+        onBack={() => {
+          setSelectedHousehold(null);
+          setSelectedTransaction(null);
+          setViewMode("list");
+          forceUpdate((prev) => prev + 1);
+        }}
+        onEditBudget={() => setViewMode("setup")}
+        onAddTransaction={() => {
+          setSelectedTransaction(null);
+          setViewMode("transaction");
+        }}
+        onEditTransaction={(transaction) => {
+          setSelectedTransaction(transaction);
+          setViewMode("transaction");
+        }}
+        onDeleteTransaction={async (id) => {
+  await deletePurchase(id);
+  await loadAppData();
+
+  const updatedHousehold = getHouseholds().find(
+    (item) => item.id === selectedHousehold.id
+  );
+
+  if (updatedHousehold) {
+    setSelectedHousehold(updatedHousehold);
+  }
+
+  forceUpdate((prev) => prev + 1);
+}}
+      />
+    );
+  }
+
+  if (selectedHousehold && viewMode === "transaction") {
+    return (
+      <NewHouseholdTransaction
+        household={selectedHousehold}
+        transaction={selectedTransaction}
+        onBack={() => {
+          setSelectedTransaction(null);
+          setViewMode("dashboard");
+        }}
+        onSave={(updated) => {
+          setSelectedTransaction(null);
+          setSelectedHousehold(updated);
+          setViewMode("dashboard");
+          forceUpdate((prev) => prev + 1);
+        }}
+      />
+    );
+  }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
-      <Text style={{ fontSize: 32, fontWeight: "bold" }}>
-        Household Budgets
-      </Text>
-
-      <View style={cardStyle}>
-        <Text style={cardTitle}>+ Create Household</Text>
-
-        <TextInput
-          placeholder="Household Name"
-          value={name}
-          onChangeText={setName}
-          style={inputStyle}
-        />
-
-        <TextInput
-          placeholder="Description (optional)"
-          value={description}
-          onChangeText={setDescription}
-          style={inputStyle}
-        />
-
-        <TextInput
-          placeholder="Number of Members"
-          value={members}
-          onChangeText={setMembers}
-          keyboardType="numeric"
-          style={inputStyle}
-        />
-
-        <Pressable onPress={handleCreate} style={buttonStyle}>
-          <Text style={buttonText}>Create Household</Text>
-        </Pressable>
-      </View>
-
-      {households.map((household) => (
-        <View key={household.id} style={cardStyle}>
-          <Text style={{ fontSize: 20, fontWeight: "bold" }}>
-            🏠 {household.name}
-          </Text>
-
-          <Text>
-            👥 {household.members} Member
-            {household.members === 1 ? "" : "s"}
-          </Text>
-
-          {household.description ? <Text>{household.description}</Text> : null}
-
-          <Text style={{ marginTop: 8 }}>Budget setup coming next.</Text>
-        </View>
-      ))}
-    </ScrollView>
+    <HouseholdList
+      onCreate={(household) => {
+        setSelectedHousehold(household);
+        setViewMode("setup");
+      }}
+      onOpen={(household) => {
+        setSelectedHousehold(household);
+        setViewMode("dashboard");
+      }}
+    />
   );
 }
-
-const cardStyle = {
-  borderWidth: 1,
-  borderRadius: 16,
-  padding: 18,
-};
-
-const cardTitle = {
-  fontSize: 22,
-  fontWeight: "bold" as const,
-  marginBottom: 12,
-};
-
-const inputStyle = {
-  borderWidth: 1,
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 12,
-};
-
-const buttonStyle = {
-  backgroundColor: "black",
-  padding: 14,
-  borderRadius: 12,
-};
-
-const buttonText = {
-  color: "white",
-  textAlign: "center" as const,
-  fontWeight: "600" as const,
-};

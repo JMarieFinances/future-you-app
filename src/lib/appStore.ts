@@ -16,6 +16,11 @@ let appData: AppData = {
     obligationDetails: {},
     debtDetails: {},
     lifestyleDetails: {},
+    
+    subscriptions: 0,
+subscriptionDetails: {},
+subscriptionDueDates: {},
+obligationDueDates: {},
 
     goals: [],
   },
@@ -26,18 +31,25 @@ let appData: AppData = {
 
   businesses: [],
 
+  calendarEvents: [],
+  
   settings: {
-    theme: "future-you",
+  theme: "future-you",
+  onboarded: false,
+  userName: "",
+  paySchedule: "biweekly",
+  budgetStyle: "custom",
+  primaryGoal: "Save Money",
 
-    notifications: {
-      goalReminders: true,
-      billReminders: true,
-      milestones: true,
-      monthlyCheckIn: true,
-      affordAlerts: true,
-      budgetWarnings: true,
-    },
+  notifications: {
+    goalReminders: true,
+    billReminders: true,
+    milestones: true,
+    monthlyCheckIn: true,
+    affordAlerts: true,
+    budgetWarnings: true,
   },
+},
 };
 
 export function getAppData() {
@@ -53,18 +65,15 @@ export async function loadAppData() {
     appData = JSON.parse(saved);
   }
 
-  console.log("LOADED PERSONAL PLAN:", appData.personalPlan);
+  console.log("LOADED APP DATA:", appData);
 
   return appData;
 }
 
 export async function saveAppData() {
-  console.log("SAVING APP DATA:", appData.personalPlan);
+  console.log("SAVING APP DATA:", appData);
 
-  await AsyncStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(appData)
-  );
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
 }
 
 export async function updateAppData(

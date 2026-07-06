@@ -1,207 +1,163 @@
-import { getPlanData } from "@/lib/planStore";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import PurchaseForm from "@/components/afford/PurchaseForm";
+import PurchaseHistory from "@/components/afford/PurchaseHistory";
+import PurchaseImpact from "@/components/afford/PurchaseImpact";
+import RecommendationCard from "@/components/afford/RecommendationCard";
+import {
+  createPurchaseFromSimulation,
+  PurchaseType,
+  simulatePurchase,
+} from "@/components/afford/affordUtils";
+import AppCard from "@/components/ui/AppCard";
+import AppPage from "@/components/ui/AppPage";
+import AppText from "@/components/ui/AppText";
+import PageHeader from "@/components/ui/PageHeader";
+import { loadAppData } from "@/lib/appStore";
+import { getFinancialSummary } from "@/lib/financeEngine";
+import { addPurchase, deletePurchase } from "@/lib/purchaseStore";
+import { Purchase } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import { View } from "react-native";
 
-export default function AffordTab() {
-  const plan = getPlanData();
+export default function AffordScreen() {
+  const [isReady, setIsReady] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [itemName, setItemName] = useState("");
-  const [price, setPrice] = useState("");
-  const [purchaseType, setPurchaseType] = useState<"oneTime" | "monthly">(
-    "oneTime"
-  );
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("Shopping");
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>("one-time");
 
-  const cost = Number(price) || 0;
-  const currentSafeToSpend = plan.safeToSpend - plan.goalContributions;
-
-  const afterPurchase =
-    purchaseType === "oneTime"
-      ? currentSafeToSpend - cost
-      : currentSafeToSpend - cost;
-
-  const saveForItMonths =
-    cost > 0 && currentSafeToSpend > 0
-      ? Math.ceil(cost / currentSafeToSpend)
-      : null;
-
-  const goalImpacts = plan.goals.map((goal) => {
-    const delay =
-      goal.monthly > 0 && cost > 0 ? Math.ceil(cost / goal.monthly) : null;
-
-    return {
-      ...goal,
-      delay,
+  useEffect(() => {
+    const load = async () => {
+      await loadAppData();
+      setIsReady(true);
     };
-  });
 
-  const getStatus = () => {
-    if (cost <= 0) return "Enter a price to analyze this purchase.";
+    load();
+  }, [refreshKey]);
 
-    if (afterPurchase < 0) return "🔴 Not Recommended";
-
-    if (afterPurchase < 100) return "🟡 Possible, but tight";
-
-    return "🟢 Comfortable";
+  const refresh = async () => {
+    await loadAppData();
+    setRefreshKey((prev) => prev + 1);
   };
 
-  const getRecommendation = () => {
-    if (cost <= 0) return "Add an item and price to see your Future You impact.";
+  const resetForm = () => {
+    setName("");
+    setAmount("");
+    setCategory("Shopping");
+    setPurchaseType("one-time");
+  };
 
-    if (afterPurchase < 0) {
-      return "Buying this now would push your safe-to-spend negative. Saving for it first protects Future You.";
-    }
+  if (!isReady) {
+    return <AppPage />;
+  }
 
-    if (afterPurchase < 100) {
-      return "You can technically afford this, but it leaves very little breathing room.";
-    }
+  const summary = getFinancialSummary();
+  const purchaseAmount = Number(amount) || 0;
 
-    return "This purchase fits inside your current plan without breaking Future You.";
+  const simulation = useMemo(
+    () =>
+      simulatePurchase({
+        name,
+        amount: purchaseAmount,
+        category,
+        purchaseType,
+      }),
+    [name, purchaseAmount, category, purchaseType, refreshKey]
+  );
+
+  const purchaseHistory = summary.purchases
+    .filter(
+      (purchase) =>
+        purchase.budgetType === "personal" && purchase.type === "expense"
+    )
+    .slice()
+    .reverse();
+
+  const savePurchase = async () => {
+    if (!name.trim() || purchaseAmount <= 0) return;
+
+    const purchase = createPurchaseFromSimulation({
+      name,
+      amount: purchaseAmount,
+      category,
+      purchaseType,
+    });
+
+    await addPurchase(purchase);
+    resetForm();
+    await refresh();
+  };
+
+  const loadPurchase = (purchase: Purchase) => {
+    setName(purchase.name);
+    setAmount(String(purchase.amount));
+    setCategory(purchase.category || "Shopping");
+    setPurchaseType(
+      purchase.notes?.includes("Monthly purchase") ? "monthly" : "one-time"
+    );
+  };
+
+  const removePurchase = async (purchaseId: string) => {
+    await deletePurchase(purchaseId);
+    await refresh();
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
-      <Text style={{ fontSize: 32, fontWeight: "bold" }}>
-        Can I Afford This?
-      </Text>
+    <AppPage>
+      <PageHeader
+        title="Afford"
+        subtitle="Simulate a purchase before it hits your budget."
+      />
 
-      <View style={cardStyle}>
-        <Text style={cardTitle}>Purchase</Text>
+      <AppCard>
+        <AppText variant="muted">Current Safe To Spend</AppText>
 
-        <TextInput
-          placeholder="Item Name"
-          value={itemName}
-          onChangeText={setItemName}
-          style={inputStyle}
-        />
-
-        <TextInput
-          placeholder="Price"
-          value={price}
-          onChangeText={setPrice}
-          keyboardType="numeric"
-          style={inputStyle}
-        />
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <Pressable
-            onPress={() => setPurchaseType("oneTime")}
-            style={[
-              toggleButton,
-              purchaseType === "oneTime" && selectedButton,
-            ]}
-          >
-            <Text>One-Time</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setPurchaseType("monthly")}
-            style={[
-              toggleButton,
-              purchaseType === "monthly" && selectedButton,
-            ]}
-          >
-            <Text>Monthly</Text>
-          </Pressable>
+        <View style={{ marginTop: 4 }}>
+          <AppText variant="title">${summary.safeToSpend.toFixed(2)}</AppText>
         </View>
-      </View>
 
-      <View style={cardStyle}>
-        <Text style={cardTitle}>Status</Text>
-        <Text style={{ fontSize: 22, fontWeight: "bold" }}>{getStatus()}</Text>
-        <Text style={{ marginTop: 8 }}>{getRecommendation()}</Text>
-      </View>
+        <AppText variant="muted">
+          Based on your income, fixed expenses, subscriptions, debt, lifestyle,
+          goals, and household setup.
+        </AppText>
+      </AppCard>
 
-      <View style={cardStyle}>
-        <Text style={cardTitle}>Safe-To-Spend Impact</Text>
-        <Text>Current Safe To Spend: ${currentSafeToSpend}</Text>
-        <Text>After Purchase: ${afterPurchase}</Text>
-      </View>
+      <PurchaseForm
+        name={name}
+        setName={setName}
+        amount={amount}
+        setAmount={setAmount}
+        category={category}
+        setCategory={setCategory}
+        purchaseType={purchaseType}
+        setPurchaseType={setPurchaseType}
+        onSave={savePurchase}
+      />
 
-      <View style={cardStyle}>
-        <Text style={cardTitle}>Goal Impact</Text>
+      {purchaseAmount > 0 ? (
+        <>
+          <PurchaseImpact
+            before={simulation.before}
+            after={simulation.after}
+            billsCovered={simulation.billsCovered}
+            subscriptionsCovered={simulation.subscriptionsCovered}
+            goalDelayDays={simulation.goalDelayDays}
+          />
 
-        {goalImpacts.length === 0 ? (
-  <Text>Complete setup first to see goal impact.</Text>
-) : (
-  goalImpacts.map((goal) => (
-    <View key={goal.id} style={{ marginBottom: 12 }}>
-      <Text style={{ fontWeight: "bold" }}>
-        {goal.emoji} {goal.name}
-      </Text>
+          <RecommendationCard
+            level={simulation.recommendation.level}
+            title={simulation.recommendation.title}
+            message={simulation.recommendation.message}
+          />
+        </>
+      ) : null}
 
-      {goal.delay !== null ? (
-        <Text>
-          This purchase costs about {goal.delay} month
-          {goal.delay === 1 ? "" : "s"} of your current ${goal.monthly}/month
-          contribution, so buying it now could push this goal back by around{" "}
-          {goal.delay} month{goal.delay === 1 ? "" : "s"}.
-        </Text>
-      ) : (
-        <Text>
-          No estimate yet because this goal does not have a monthly contribution.
-        </Text>
-      )}
-    </View>
-  ))
-)}
-      </View>
-
-      <View style={cardStyle}>
-        <Text style={cardTitle}>What If You Saved For It?</Text>
-
-        {saveForItMonths !== null ? (
-          <>
-            <Text>
-              If you set aside your current safe-to-spend amount each month,
-              you could afford this in:
-            </Text>
-
-            <Text style={{ fontSize: 28, fontWeight: "bold", marginTop: 8 }}>
-              {saveForItMonths} months
-            </Text>
-
-            <Text style={{ marginTop: 8 }}>
-              This keeps your existing Future You goals untouched.
-            </Text>
-          </>
-        ) : (
-          <Text>
-            Add a price and keep your safe-to-spend positive to estimate a
-            savings timeline.
-          </Text>
-        )}
-      </View>
-    </ScrollView>
+      <PurchaseHistory
+        purchases={purchaseHistory}
+        onSelect={loadPurchase}
+        onDelete={removePurchase}
+      />
+    </AppPage>
   );
 }
-
-const cardStyle = {
-  borderWidth: 1,
-  borderRadius: 16,
-  padding: 18,
-};
-
-const cardTitle = {
-  fontSize: 22,
-  fontWeight: "bold" as const,
-  marginBottom: 8,
-};
-
-const inputStyle = {
-  borderWidth: 1,
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 12,
-};
-
-const toggleButton = {
-  borderWidth: 1,
-  borderRadius: 12,
-  padding: 12,
-  flex: 1,
-  alignItems: "center" as const,
-};
-
-const selectedButton = {
-  backgroundColor: "#d9f99d",
-};

@@ -1,5 +1,4 @@
-import { loadAppData } from "@/lib/appStore";
-import { getPlanData } from "@/lib/planStore";
+import { getAppData, loadAppData } from "@/lib/appStore";
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -9,13 +8,14 @@ export default function HomeScreen() {
     const initialize = async () => {
       await loadAppData();
 
-      const plan = getPlanData();
+      const app = getAppData();
 
-      if (plan.income > 0) {
-        router.replace("/(tabs)/dashboard");
-      } else {
-        router.replace("/setup");
+      if (!app.settings.onboarded) {
+        router.replace("/onboarding");
+        return;
       }
+
+      router.replace("/(tabs)/today");
     };
 
     initialize();
