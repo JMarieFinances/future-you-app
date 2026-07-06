@@ -24,10 +24,16 @@ export default function ProfileTab() {
 
       <AppCard>
         <AppText variant="muted">Account Hub</AppText>
+
         <View style={{ marginTop: 4 }}>
-          <AppText variant="title">{theme.emoji} {theme.name}</AppText>
+          <AppText variant="title">
+            {theme.emoji} {theme.name}
+          </AppText>
         </View>
-        <AppText variant="muted">Manage your budgets, workspace, and reminders.</AppText>
+
+        <AppText variant="muted">
+          Manage your budgets, workspace, and reminders.
+        </AppText>
       </AppCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
@@ -105,9 +111,10 @@ export default function ProfileTab() {
           />
 
           <MenuButton
-    title="🛠 Developer Tools"
-    route="/dev"
-/>
+            title="⚙️ Settings"
+            subtitle="Manage account, billing, support, and app details."
+            route="/(tabs)/settings"
+          />
         </View>
       </AppCard>
 
@@ -115,9 +122,15 @@ export default function ProfileTab() {
         <AppText variant="section">Coming Soon</AppText>
 
         <View style={{ marginTop: 12, gap: 10 }}>
-          <DisabledRow title="📤 Export Data" subtitle="Download reports and backups." />
-          <DisabledRow title="☁️ Backup & Sync" subtitle="Securely sync across devices." />
-          <DisabledRow title="❓ Help & Support" subtitle="Guides, FAQs, and contact support." />
+          <DisabledRow
+            title="📤 Export Data"
+            subtitle="Download reports and backups."
+          />
+
+          <DisabledRow
+            title="❓ Help & Support"
+            subtitle="Guides, FAQs, and contact support."
+          />
         </View>
       </AppCard>
     </AppPage>

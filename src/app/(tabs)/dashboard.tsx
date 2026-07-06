@@ -81,7 +81,7 @@ export default function DashboardScreen() {
 
   const summary = getFinancialSummary();
   const plan = summary.plan;
-  const purchases = summary.purchases;
+  const purchases = summary.monthlyPurchases;
 
   const personalPurchases = purchases.filter(
     (purchase) => purchase.budgetType === "personal"

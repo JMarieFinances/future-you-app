@@ -28,6 +28,89 @@ function isThisMonth(date: string) {
   );
 }
 
+function normalizeKey(value?: string) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getPlannedMap(details?: Record<string, number>) {
+  const map = new Map<string, number>();
+
+  Object.entries(details ?? {}).forEach(([key, amount]) => {
+    if (amount > 0) {
+      map.set(normalizeKey(key), amount);
+    }
+  });
+
+  return map;
+}
+
+function getPersonalSafeSpendImpact(personalPurchases: Purchase[], plan: any) {
+  const personalExpenses = personalPurchases.filter(
+    (purchase) => purchase.type === "expense"
+  );
+
+  const plannedMaps = [
+    getPlannedMap(plan.obligationDetails),
+    getPlannedMap(plan.subscriptionDetails),
+    getPlannedMap(plan.debtDetails),
+    getPlannedMap(plan.lifestyleDetails),
+  ];
+
+  const spentByPlannedKey = new Map<string, number>();
+  let unbudgetedSpent = 0;
+
+  personalExpenses.forEach((purchase) => {
+    const possibleKeys = [
+      normalizeKey(purchase.category),
+      normalizeKey(purchase.subcategory),
+      normalizeKey(purchase.name),
+    ];
+
+    let matchedBudget: number | null = null;
+    let matchedKey: string | null = null;
+
+    for (const key of possibleKeys) {
+      if (!key) continue;
+
+      for (const plannedMap of plannedMaps) {
+        if (plannedMap.has(key)) {
+          matchedBudget = plannedMap.get(key) ?? 0;
+          matchedKey = key;
+          break;
+        }
+      }
+
+      if (matchedKey) break;
+    }
+
+    if (matchedKey && matchedBudget !== null) {
+      spentByPlannedKey.set(
+        matchedKey,
+        (spentByPlannedKey.get(matchedKey) ?? 0) + purchase.amount
+      );
+    } else {
+      unbudgetedSpent += purchase.amount;
+    }
+  });
+
+  let overBudgetSpent = 0;
+
+  spentByPlannedKey.forEach((spent, key) => {
+    let budget = 0;
+
+    for (const plannedMap of plannedMaps) {
+      if (plannedMap.has(key)) {
+        budget = plannedMap.get(key) ?? 0;
+        break;
+      }
+    }
+
+    overBudgetSpent += Math.max(spent - budget, 0);
+  });
+
+  return unbudgetedSpent + overBudgetSpent;
+}
+
 export function getFinancialSummary() {
   const plan = getPlanData();
   const households = getHouseholds();
@@ -55,6 +138,10 @@ export function getFinancialSummary() {
   const businessSpent = sumPurchases(businessPurchases, "expense");
   const personalIncomeLogged = sumPurchases(personalPurchases, "income");
 
+  const personalSafeSpendImpact = getPersonalSafeSpendImpact(
+  personalPurchases,
+  plan
+);
   const fixedExpenses = plan.obligations ?? sumDetails(plan.obligationDetails);
   const subscriptions = plan.subscriptions ?? sumDetails(plan.subscriptionDetails);
   const debt = plan.debt ?? sumDetails(plan.debtDetails);
@@ -130,13 +217,16 @@ export function getFinancialSummary() {
   const totalSpent = personalSpent + householdSpent + businessSpent;
 
   const safeToSpend =
-    personalBaseIncome -
-    plannedPersonalTotal -
-    householdPersonalPull -
-    personalSpent;
+  personalBaseIncome -
+  plannedPersonalTotal -
+  householdPersonalPull -
+  personalSafeSpendImpact;
 
   const netCashFlow = totalIncome - totalSpent;
-  const estimatedSaved = Math.max(totalIncome - totalAssigned - totalSpent, 0);
+ const estimatedSaved = Math.max(
+  totalIncome - totalAssigned - personalSafeSpendImpact,
+  0
+);
   const savingsRate =
     totalIncome > 0 ? (estimatedSaved / totalIncome) * 100 : 0;
 
@@ -162,6 +252,7 @@ export function getFinancialSummary() {
 
     personalBaseIncome,
     personalSpent,
+    personalSafeSpendImpact,
 
     fixedExpenses,
     subscriptions,

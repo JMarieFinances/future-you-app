@@ -6,8 +6,6 @@ export function getPlanData(): PlanData {
 }
 
 export async function setPlanData(plan: PlanData) {
-  console.log("SETTING PERSONAL PLAN:", plan);
-
   await updateAppData((app) => {
     app.personalPlan = plan;
   });

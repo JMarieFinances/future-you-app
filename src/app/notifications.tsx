@@ -64,9 +64,10 @@ export default function NotificationsScreen() {
   return (
     <AppPage>
       <PageHeader
-        title="Notifications"
-        subtitle="Control how Future You keeps you accountable."
-      />
+  title="Notifications"
+  subtitle="Manage your notification preferences."
+  showBack
+/>
 
       <AppCard>
         <AppText variant="muted">Notification Center</AppText>

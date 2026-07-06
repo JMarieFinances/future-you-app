@@ -6,7 +6,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { Alert, Linking, View } from "react-native";
 
 export default function SubscribeScreen() {
   const [loading, setLoading] = useState(false);
@@ -19,29 +19,27 @@ export default function SubscribeScreen() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (!user?.email) {
         router.replace("/auth");
         return;
       }
 
-      const { error } = await supabase
-        .from("user_subscriptions")
-        .upsert({
-          user_id: user.id,
-          status: "trialing",
-          plan: "premium",
-          trial_end: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000
-          ).toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      const { data, error } = await supabase.functions.invoke(
+        "create-checkout-session",
+        {
+          body: {
+            email: user.email,
+            userId: user.id,
+          },
+        }
+      );
 
       if (error) throw error;
+      if (!data?.url) throw new Error("No checkout URL returned.");
 
-      router.replace("/");
+      await Linking.openURL(data.url);
     } catch (err: any) {
-      Alert.alert("Subscription Error", err.message);
-      console.log(err);
+      Alert.alert("Checkout Error", err.message ?? "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -56,7 +54,7 @@ export default function SubscribeScreen() {
     <AppPage>
       <PageHeader
         title="Future You Premium"
-        subtitle="Plan your life, not just your money."
+        subtitle="Start your free month, then continue for $5.99/month."
       />
 
       <AppCard>
@@ -67,7 +65,7 @@ export default function SubscribeScreen() {
         </View>
 
         <View style={{ marginTop: 12, gap: 6 }}>
-          <AppText variant="muted">• 30-day free beta trial</AppText>
+          <AppText variant="muted">• 30-day free trial</AppText>
           <AppText variant="muted">• Personal budgets</AppText>
           <AppText variant="muted">• Household budgets</AppText>
           <AppText variant="muted">• Business budgets</AppText>
@@ -77,15 +75,11 @@ export default function SubscribeScreen() {
       </AppCard>
 
       <AppButton
-        title={loading ? "Starting Trial..." : "Start Free Month"}
+        title={loading ? "Opening Checkout..." : "Start Free Month"}
         onPress={handleSubscribe}
       />
 
-      <AppButton
-        title="Log Out"
-        onPress={handleLogout}
-        variant="outline"
-      />
+      <AppButton title="Log Out" onPress={handleLogout} variant="outline" />
     </AppPage>
   );
 }

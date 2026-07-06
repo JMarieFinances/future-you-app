@@ -34,9 +34,10 @@ export default function ThemesScreen() {
   return (
     <AppPage>
       <PageHeader
-        title="Themes"
-        subtitle="Make Future You feel like your own financial workspace."
-      />
+  title="Themes"
+  subtitle="Customize the look of Future You."
+  showBack
+/>
 
       <AppCard>
         <AppRow>
