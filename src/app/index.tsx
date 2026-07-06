@@ -1,4 +1,5 @@
 import { getAppData, loadAppData } from "@/lib/appStore";
+import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -6,6 +7,13 @@ import { ActivityIndicator, View } from "react-native";
 export default function HomeScreen() {
   useEffect(() => {
     const initialize = async () => {
+      const { data } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        router.replace("/auth");
+        return;
+      }
+
       await loadAppData();
 
       const app = getAppData();

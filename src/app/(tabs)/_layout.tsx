@@ -3,15 +3,16 @@ import { Tabs, router } from "expo-router";
 import { useState } from "react";
 import { Modal, Pressable, Text } from "react-native";
 
-  const menuItems = [
+const menuItems = [
   { label: "Today", route: "/(tabs)/today" },
-    { label: "Dashboard", route: "/(tabs)/dashboard" },
+  { label: "Dashboard", route: "/(tabs)/dashboard" },
   { label: "Goals", route: "/(tabs)/goals" },
   { label: "Plan", route: "/(tabs)/plan" },
   { label: "Afford", route: "/(tabs)/afford" },
   { label: "Calendar", route: "/(tabs)/calendar" },
   { label: "Review", route: "/(tabs)/review" },
   { label: "Profile", route: "/(tabs)/profile" },
+  { label: "Settings", route: "/(tabs)/settings" },
 ];
 
 export default function TabsLayout() {
@@ -31,6 +32,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
         <Tabs.Screen name="review" options={{ title: "Review" }} />
         <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+        <Tabs.Screen name="settings" options={{ title: "Settings" }} />
       </Tabs>
 
       <FloatingMenu />
