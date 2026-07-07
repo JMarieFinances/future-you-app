@@ -1,4 +1,3 @@
-import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
 import AppInput from "@/components/ui/AppInput";
 import AppPage from "@/components/ui/AppPage";
@@ -33,6 +32,14 @@ const statusLabels = {
   closed: "Closed",
 };
 
+function showMessage(title: string, message: string) {
+  if (typeof window !== "undefined") {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
 export default function SupportCenter() {
   const [issueType, setIssueType] = useState<IssueType>("bug");
   const [subject, setSubject] = useState("");
@@ -52,7 +59,7 @@ export default function SupportCenter() {
     setLoading(false);
 
     if (error) {
-      Alert.alert("Could not load requests", error.message);
+      showMessage("Could not load requests", error.message);
       return;
     }
 
@@ -60,8 +67,10 @@ export default function SupportCenter() {
   }
 
   async function submitRequest() {
+    if (sending) return;
+
     if (!subject.trim() || !message.trim()) {
-      Alert.alert("Missing info", "Please add a subject and message.");
+      showMessage("Missing info", "Please add a subject and message.");
       return;
     }
 
@@ -74,7 +83,7 @@ export default function SupportCenter() {
 
     if (userError || !user?.email) {
       setSending(false);
-      Alert.alert("Not signed in", "Please log in again to contact support.");
+      showMessage("Not signed in", "Please log in again to contact support.");
       return;
     }
 
@@ -90,7 +99,7 @@ export default function SupportCenter() {
     setSending(false);
 
     if (error) {
-      Alert.alert("Could not submit request", error.message);
+      showMessage("Could not submit request", error.message);
       return;
     }
 
@@ -98,7 +107,7 @@ export default function SupportCenter() {
     setMessage("");
     setIssueType("bug");
 
-    Alert.alert("Request submitted", "We got your message.");
+    showMessage("Request submitted", "We got your message.");
     loadRequests();
   }
 
@@ -111,8 +120,8 @@ export default function SupportCenter() {
       <PageHeader
         title="Support Center"
         subtitle="Send us bugs, billing issues, questions, or feedback."
-     showBack
-     />
+        showBack
+      />
 
       <AppCard>
         <AppText variant="title">New Request</AppText>
@@ -122,15 +131,21 @@ export default function SupportCenter() {
             const selected = issueType === item.value;
 
             return (
-              <Pressable key={item.value} onPress={() => setIssueType(item.value)}>
-                <AppCard
-                  style={{
-                    borderWidth: 1,
-                    opacity: selected ? 1 : 0.75,
-                  }}
-                >
-                  <AppText>{item.label}</AppText>
-                </AppCard>
+              <Pressable
+                key={item.value}
+                onPress={() => setIssueType(item.value)}
+                style={{
+                  padding: 14,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: selected ? "#10b981" : "rgba(148, 163, 184, 0.35)",
+                  backgroundColor: selected
+                    ? "rgba(16, 185, 129, 0.14)"
+                    : "rgba(148, 163, 184, 0.08)",
+                  cursor: "pointer" as any,
+                }}
+              >
+                <AppText>{item.label}</AppText>
               </Pressable>
             );
           })}
@@ -152,11 +167,21 @@ export default function SupportCenter() {
             multiline
           />
 
-          <AppButton
-            title={sending ? "Submitting..." : "Submit Request"}
+          <Pressable
             onPress={submitRequest}
             disabled={sending}
-          />
+            style={{
+              padding: 14,
+              borderRadius: 16,
+              alignItems: "center",
+              backgroundColor: sending ? "#64748b" : "#10b981",
+              cursor: sending ? "not-allowed" : "pointer",
+            }}
+          >
+            <AppText style={{ color: "white", fontWeight: "700" }}>
+              {sending ? "Submitting..." : "Submit Request"}
+            </AppText>
+          </Pressable>
         </View>
       </AppCard>
 
