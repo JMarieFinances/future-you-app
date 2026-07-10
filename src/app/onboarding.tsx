@@ -177,32 +177,15 @@ const [nextPayDate, setNextPayDate] = useState("");
         }
       : null;
 
-    const calendarEvents: CalendarEvent[] = [
-      {
-        ...buildPaydayEvents({
-   paycheckAmount: Number(paycheckAmount) || monthlyIncome,
-  paySchedule,
-  payday,
-  secondPayday,
-  weekday,
-  nextPayDate,
-}),
-        id: "payday",
-        title: "Payday",
-        amount: monthlyIncome,
-        day: clampDay(payday),
-        month: new Date().getMonth(),
-        year: new Date().getFullYear(),
-        type: "payday",
-        repeat:
-          paySchedule === "weekly"
-            ? "weekly"
-            : paySchedule === "biweekly"
-            ? "biweekly"
-            : "monthly",
-        notes: "Created during onboarding.",
-        sourceType: "personal",
-      },
+   const calendarEvents: CalendarEvent[] = [
+  ...buildPaydayEvents({
+    paycheckAmount: Number(paycheckAmount) || monthlyIncome,
+    paySchedule,
+    payday,
+    secondPayday,
+    weekday,
+    nextPayDate,
+  }),
       {
         id: "monthly-review",
         title: "Monthly Review",

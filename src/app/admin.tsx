@@ -1,4 +1,6 @@
+import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
+import AppInput from "@/components/ui/AppInput";
 import AppPage from "@/components/ui/AppPage";
 import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
@@ -6,7 +8,7 @@ import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Alert, Pressable, View } from "react-native";
 
 type SubscriptionRow = {
   user_id: string;
@@ -23,11 +25,13 @@ type SubscriptionRow = {
 type SupportRequest = {
   id: string;
   user_id: string;
-  email: string;
-  issue_type: string;
+  email: string | null;
+  type?: string;
+  issue_type?: string;
   subject: string;
   message: string;
   status: "open" | "in_progress" | "closed";
+  admin_response?: string | null;
   created_at: string;
 };
 
@@ -35,14 +39,18 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState(false);
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
- const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
+  const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<SupportRequest | null>(null);
+  const [adminResponse, setAdminResponse] = useState("");
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     loadAdminData();
   }, []);
 
-  const loadAdminData = async () => {
+  async function loadAdminData() {
+    setLoading(true);
+
     const { data: userData } = await supabase.auth.getUser();
     const user = userData.user;
 
@@ -51,13 +59,6 @@ export default function AdminScreen() {
       setLoading(false);
       return;
     }
-
-    const { data: requests } = await supabase
-  .from("support_requests")
-  .select("*")
-  .order("created_at", { ascending: false });
-
-setSupportRequests((requests ?? []) as SupportRequest[]);
 
     const { data: adminRow } = await supabase
       .from("admin_users")
@@ -73,14 +74,48 @@ setSupportRequests((requests ?? []) as SupportRequest[]);
 
     setAllowed(true);
 
-    const { data } = await supabase
+    const { data: subData } = await supabase
       .from("user_subscriptions")
       .select("*")
       .order("updated_at", { ascending: false });
 
-    setSubscriptions((data ?? []) as SubscriptionRow[]);
+    const { data: requestsData, error: requestsError } = await supabase
+      .from("support_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (requestsError) {
+      Alert.alert("Support error", requestsError.message);
+    }
+
+    setSubscriptions((subData ?? []) as SubscriptionRow[]);
+    setSupportRequests((requestsData ?? []) as SupportRequest[]);
     setLoading(false);
-  };
+  }
+
+  async function updateSupportStatus(status: "open" | "in_progress" | "closed") {
+    if (!selectedRequest) return;
+
+    const { error } = await supabase
+      .from("support_requests")
+      .update({
+        status,
+        admin_response: adminResponse,
+        responded_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", selectedRequest.id);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    Alert.alert("Saved", "Support request updated.");
+    setSelectedRequest(null);
+    setAdminResponse("");
+    loadAdminData();
+  }
 
   if (loading) {
     return (
@@ -93,10 +128,7 @@ setSupportRequests((requests ?? []) as SupportRequest[]);
   if (!allowed) {
     return (
       <AppPage>
-        <PageHeader
-          title="Admin"
-          subtitle="You do not have access to this page."
-        />
+        <PageHeader title="Admin" subtitle="You do not have access to this page." />
       </AppPage>
     );
   }
@@ -114,184 +146,125 @@ setSupportRequests((requests ?? []) as SupportRequest[]);
   const conversionRate = totalUsers > 0 ? (active / totalUsers) * 100 : 0;
   const churnRate = totalUsers > 0 ? (canceled / totalUsers) * 100 : 0;
 
-  const trialsEndingSoon = subscriptions.filter((item) => {
-    if (item.status !== "trialing" || !item.trial_end) return false;
-
-    const now = Date.now();
-    const trialEnd = new Date(item.trial_end).getTime();
-    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-
-    return trialEnd >= now && trialEnd <= now + sevenDays;
-  });
-
   const filteredSubscriptions =
-    filter === "all"
-      ? subscriptions
-      : subscriptions.filter((item) => item.status === filter);
+    filter === "all" ? subscriptions : subscriptions.filter((item) => item.status === filter);
+
+  if (selectedRequest) {
+    const requestType = selectedRequest.issue_type ?? selectedRequest.type ?? "general";
+
+    return (
+      <AppPage>
+        <PageHeader title="Support Request" subtitle="Review and update this ticket." />
+
+        <AppCard>
+          <View style={{ gap: 12 }}>
+            <AppText variant="title">{selectedRequest.subject}</AppText>
+            <AppText variant="muted">Email: {selectedRequest.email ?? "No email"}</AppText>
+            <AppText variant="muted">Type: {requestType.replaceAll("_", " ")}</AppText>
+            <AppText variant="muted">Status: {selectedRequest.status}</AppText>
+            <AppText variant="muted">Created: {formatDate(selectedRequest.created_at)}</AppText>
+
+            <AppText>{selectedRequest.message}</AppText>
+
+            <AppInput
+              label="Admin Response / Notes"
+              value={adminResponse}
+              onChangeText={setAdminResponse}
+              placeholder="Write your response or internal note..."
+              multiline
+            />
+
+            <AppButton title="Mark In Progress" onPress={() => updateSupportStatus("in_progress")} />
+            <AppButton title="Mark Closed" onPress={() => updateSupportStatus("closed")} />
+            <AppButton
+              title="Back to Support Queue"
+              variant="secondary"
+              onPress={() => {
+                setSelectedRequest(null);
+                setAdminResponse("");
+              }}
+            />
+          </View>
+        </AppCard>
+      </AppPage>
+    );
+  }
 
   return (
     <AppPage>
       <PageHeader
         title="Admin Dashboard"
-        subtitle="Track users, trials, subscriptions, revenue, and platform health."
+        subtitle="Track users, trials, subscriptions, revenue, and support."
       />
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Users"
-            value={String(totalUsers)}
-            caption="Total accounts"
-            tone="primary"
-          />
+          <MetricCard title="Users" value={String(totalUsers)} caption="Total accounts" tone="primary" />
         </View>
-
         <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Trials"
-            value={String(trials)}
-            caption="Free month"
-            tone="warning"
-          />
+          <MetricCard title="Trials" value={String(trials)} caption="Free month" tone="warning" />
         </View>
       </View>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Active"
-            value={String(active)}
-            caption="Paid users"
-            tone="success"
-          />
+          <MetricCard title="Active" value={String(active)} caption="Paid users" tone="success" />
         </View>
-
         <View style={{ flex: 1 }}>
-          <MetricCard
-            title="MRR"
-            value={`$${activeMrr.toFixed(2)}`}
-            caption="Monthly revenue"
-            tone="success"
-          />
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Past Due"
-            value={String(pastDue)}
-            caption="Payment issues"
-            tone="danger"
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Trial Pipeline"
-            value={`$${trialPipeline.toFixed(2)}`}
-            caption="Potential MRR"
-            tone="primary"
-          />
+          <MetricCard title="MRR" value={`$${activeMrr.toFixed(2)}`} caption="Monthly revenue" tone="success" />
         </View>
       </View>
 
       <AppCard>
-        <AppText variant="section">Business Health</AppText>
+        <AppText variant="section">Support Queue</AppText>
 
-        <View style={{ marginTop: 12, gap: 8 }}>
-          <AppRow>
-            <AppText variant="muted">Active + Trialing</AppText>
-            <AppText variant="bold">{paidOrTrial}</AppText>
-          </AppRow>
+        <View style={{ marginTop: 12, gap: 14 }}>
+          {supportRequests.length === 0 ? (
+            <AppText variant="muted">No support requests.</AppText>
+          ) : (
+            supportRequests.map((request) => {
+              const requestType = request.issue_type ?? request.type ?? "general";
 
-          <AppRow>
-            <AppText variant="muted">Conversion Rate</AppText>
-            <AppText variant="bold">{conversionRate.toFixed(1)}%</AppText>
-          </AppRow>
+              return (
+                <AppCard key={request.id}>
+                  <View style={{ gap: 8 }}>
+                    <AppRow>
+                      <AppText variant="bold">{request.subject}</AppText>
+                      <AppText>{request.status}</AppText>
+                    </AppRow>
 
-          <AppRow>
-            <AppText variant="muted">Churn Rate</AppText>
-            <AppText variant="bold">{churnRate.toFixed(1)}%</AppText>
-          </AppRow>
+                    <AppText variant="muted">{request.email ?? "No email"}</AppText>
+                    <AppText variant="muted">{requestType.replaceAll("_", " ")}</AppText>
+                    <AppText>{request.message}</AppText>
+                    <AppText variant="muted">{formatDate(request.created_at)}</AppText>
 
-          <AppRow>
-            <AppText variant="muted">Inactive</AppText>
-            <AppText variant="bold">{inactive}</AppText>
-          </AppRow>
-
-          <AppRow>
-            <AppText variant="muted">Canceled</AppText>
-            <AppText variant="bold">{canceled}</AppText>
-          </AppRow>
+                    <AppButton
+                      title="Open"
+                      onPress={() => {
+                        setSelectedRequest(request);
+                        setAdminResponse(request.admin_response ?? "");
+                      }}
+                    />
+                  </View>
+                </AppCard>
+              );
+            })
+          )}
         </View>
       </AppCard>
-
-      <AppCard>
-  <AppRow>
-    <AppText variant="section">Support Queue</AppText>
-    <AppText variant="muted">
-      {supportRequests.length} requests
-    </AppText>
-  </AppRow>
-
-  <View style={{ marginTop: 12, gap: 14 }}>
-    {supportRequests.length === 0 ? (
-      <AppText variant="muted">
-        No support requests.
-      </AppText>
-    ) : (
-      supportRequests.map((request) => (
-        <View key={request.id}>
-          <AppRow>
-            <AppText variant="bold">
-              {request.subject}
-            </AppText>
-
-            <AppText>
-              {request.status === "open"
-                ? "Open"
-                : request.status === "in_progress"
-                ? "In Progress"
-                : "Closed"}
-            </AppText>
-          </AppRow>
-
-          <AppText variant="muted">
-            {request.email}
-          </AppText>
-
-          <AppText variant="muted">
-            {request.issue_type.replaceAll("_", " ")}
-          </AppText>
-
-          <AppText style={{ marginTop: 4 }}>
-            {request.message}
-          </AppText>
-
-          <AppText variant="muted" style={{ marginTop: 6 }}>
-            {formatDate(request.created_at)}
-          </AppText>
-        </View>
-      ))
-    )}
-  </View>
-</AppCard>
 
       <AppCard>
         <AppText variant="section">Filters</AppText>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          {["all", "trialing", "active", "past_due", "inactive", "canceled"].map(
-            (status) => (
-              <FilterChip
-                key={status}
-                label={status}
-                active={filter === status}
-                onPress={() => setFilter(status)}
-              />
-            )
-          )}
+          {["all", "trialing", "active", "past_due", "inactive", "canceled"].map((status) => (
+            <FilterChip
+              key={status}
+              label={status}
+              active={filter === status}
+              onPress={() => setFilter(status)}
+            />
+          ))}
         </View>
       </AppCard>
 
@@ -305,33 +278,43 @@ setSupportRequests((requests ?? []) as SupportRequest[]);
           {filteredSubscriptions.length === 0 ? (
             <AppText variant="muted">No users match this filter.</AppText>
           ) : (
-            filteredSubscriptions.map((item) => (
-              <AdminUserRow key={item.user_id} item={item} />
-            ))
+            filteredSubscriptions.map((item) => <AdminUserRow key={item.user_id} item={item} />)
           )}
         </View>
       </AppCard>
 
       <AppCard>
-        <AppText variant="section">Feature Flags</AppText>
+        <AppText variant="section">Business Health</AppText>
 
         <View style={{ marginTop: 12, gap: 8 }}>
-          <FeatureFlag label="Monthly Review Redesign" enabled />
-          <FeatureFlag label="Stripe Billing" enabled />
-          <FeatureFlag label="Cloud Sync" enabled />
-          <FeatureFlag label="AI Budget Coach" />
-          <FeatureFlag label="Advanced Charts" />
-        </View>
-      </AppCard>
-
-      <AppCard>
-        <AppText variant="section">Support Queue</AppText>
-
-        <View style={{ marginTop: 12, gap: 8 }}>
-          <AppText variant="muted">No support requests yet.</AppText>
-          <AppText variant="muted">
-            Later, this can connect to a support_requests table.
-          </AppText>
+          <AppRow>
+            <AppText variant="muted">Active + Trialing</AppText>
+            <AppText variant="bold">{paidOrTrial}</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Conversion Rate</AppText>
+            <AppText variant="bold">{conversionRate.toFixed(1)}%</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Churn Rate</AppText>
+            <AppText variant="bold">{churnRate.toFixed(1)}%</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Past Due</AppText>
+            <AppText variant="bold">{pastDue}</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Inactive</AppText>
+            <AppText variant="bold">{inactive}</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Canceled</AppText>
+            <AppText variant="bold">{canceled}</AppText>
+          </AppRow>
+          <AppRow>
+            <AppText variant="muted">Trial Pipeline</AppText>
+            <AppText variant="bold">${trialPipeline.toFixed(2)}</AppText>
+          </AppRow>
         </View>
       </AppCard>
     </AppPage>
@@ -353,15 +336,11 @@ function AdminUserRow({ item }: { item: SubscriptionRow }) {
       ) : null}
 
       {item.current_period_end ? (
-        <AppText variant="muted">
-          Period ends: {formatDate(item.current_period_end)}
-        </AppText>
+        <AppText variant="muted">Period ends: {formatDate(item.current_period_end)}</AppText>
       ) : null}
 
       {item.stripe_customer_id ? (
-        <AppText variant="muted">
-          Stripe: {shortId(item.stripe_customer_id)}
-        </AppText>
+        <AppText variant="muted">Stripe: {shortId(item.stripe_customer_id)}</AppText>
       ) : null}
     </View>
   );
@@ -389,15 +368,6 @@ function FilterChip({
     >
       <AppText variant="bold">{label}</AppText>
     </Pressable>
-  );
-}
-
-function FeatureFlag({ label, enabled = false }: { label: string; enabled?: boolean }) {
-  return (
-    <AppRow>
-      <AppText variant="muted">{label}</AppText>
-      <AppText variant="bold">{enabled ? "On" : "Off"}</AppText>
-    </AppRow>
   );
 }
 

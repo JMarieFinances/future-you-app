@@ -152,6 +152,12 @@ export async function saveAppData() {
   if (error) {
     console.log("Cloud sync failed:", error.message);
   }
+
+  if (error) {
+  console.log("Cloud sync failed:", error.message);
+} else {
+  console.log("Cloud sync success:", appData.settings.onboarded);
+}
 }
 
 export async function updateAppData(updater: (data: AppData) => void) {

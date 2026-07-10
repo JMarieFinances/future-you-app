@@ -12,7 +12,7 @@ type IssueType = "bug" | "feature_request" | "general_question" | "billing_issue
 
 type SupportRequest = {
   id: string;
-  issue_type: IssueType;
+  type: IssueType;
   subject: string;
   message: string;
   status: "open" | "in_progress" | "closed";
@@ -88,13 +88,12 @@ export default function SupportCenter() {
     }
 
     const { error } = await supabase.from("support_requests").insert({
-      user_id: user.id,
-      email: user.email,
-      issue_type: issueType,
-      subject: subject.trim(),
-      message: message.trim(),
-      status: "open",
-    });
+  user_id: user.id,
+  email: user.email,
+  type: issueType,
+  subject,
+  message,
+});
 
     setSending(false);
 
@@ -203,7 +202,7 @@ export default function SupportCenter() {
                 </AppRow>
 
                 <AppText style={{ marginTop: 6 }}>
-                  {issueTypes.find((type) => type.value === request.issue_type)?.label}
+                  {issueTypes.find((type) => type.value === request.type)?.label}
                 </AppText>
 
                 <AppText style={{ marginTop: 6 }}>

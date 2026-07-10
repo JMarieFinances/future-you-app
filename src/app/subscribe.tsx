@@ -3,24 +3,79 @@ import AppCard from "@/components/ui/AppCard";
 import AppPage from "@/components/ui/AppPage";
 import AppText from "@/components/ui/AppText";
 import PageHeader from "@/components/ui/PageHeader";
+import {
+  getSubscriptionStatus,
+  hasActiveSubscription,
+} from "@/lib/subscriptionStore";
 import { supabase } from "@/lib/supabase";
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { Alert, Linking, View } from "react-native";
 
-export default function SubscribeScreen() {
-  const [loading, setLoading] = useState(false);
+export default function SubscribePage() {
+  const params = useLocalSearchParams();
 
-  async function handleSubscribe() {
+  const [loading, setLoading] = useState(false);
+  const [activating, setActivating] = useState(false);
+
+  useEffect(() => {
+    if (params.success !== "true") return;
+
+    let canceled = false;
+
+    async function waitForSubscription() {
+      setActivating(true);
+
+      for (let i = 0; i < 15; i++) {
+        const status = await getSubscriptionStatus();
+
+        if (hasActiveSubscription(status)) {
+          router.replace("/onboarding");
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        if (canceled) return;
+      }
+
+      Alert.alert(
+        "Still activating",
+        "Your payment went through, but your account is still updating. Try refreshing in a few seconds."
+      );
+
+      setActivating(false);
+    }
+
+    waitForSubscription();
+
+    return () => {
+      canceled = true;
+    };
+  }, [params.success]);
+
+  useEffect(() => {
+    if (params.canceled === "true") {
+      Alert.alert(
+        "Checkout canceled",
+        "You can start your trial whenever you're ready."
+      );
+    }
+  }, [params.canceled]);
+
+  async function startTrial() {
+    if (loading) return;
+
     try {
       setLoading(true);
 
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (!user?.email) {
-        router.replace("/auth");
+      if (userError || !user) {
+        Alert.alert("Sign in required", "Please create an account or sign in first.");
         return;
       }
 
@@ -34,52 +89,82 @@ export default function SubscribeScreen() {
         }
       );
 
-      if (error) throw error;
-      if (!data?.url) throw new Error("No checkout URL returned.");
+      if (error) {
+        Alert.alert("Checkout error", error.message);
+        return;
+      }
+
+      if (!data?.url) {
+        Alert.alert("Checkout error", "No Stripe checkout link was returned.");
+        return;
+      }
 
       await Linking.openURL(data.url);
-    } catch (err: any) {
-      Alert.alert("Checkout Error", err.message ?? "Something went wrong.");
+    } catch (err) {
+      Alert.alert(
+        "Checkout error",
+        err instanceof Error ? err.message : "Something went wrong opening Stripe."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace("/auth");
+  if (activating) {
+    return (
+      <AppPage>
+        <PageHeader
+          title="Activating your trial..."
+          subtitle="This usually only takes a few seconds."
+        />
+
+        <AppCard>
+          <View style={{ gap: 12 }}>
+            <AppText variant="title">Almost there</AppText>
+            <AppText>
+              Future You is confirming your subscription and setting up your
+              account.
+            </AppText>
+          </View>
+        </AppCard>
+      </AppPage>
+    );
   }
 
   return (
     <AppPage>
       <PageHeader
         title="Future You Premium"
-        subtitle="Start your free month, then continue for $5.99/month."
+        subtitle="Start your 30-day free trial."
       />
 
       <AppCard>
-        <AppText variant="muted">Premium Membership</AppText>
-
-        <View style={{ marginTop: 8 }}>
+        <View style={{ gap: 14 }}>
           <AppText variant="title">$5.99/month</AppText>
-        </View>
 
-        <View style={{ marginTop: 12, gap: 6 }}>
-          <AppText variant="muted">• 30-day free trial</AppText>
-          <AppText variant="muted">• Personal budgets</AppText>
-          <AppText variant="muted">• Household budgets</AppText>
-          <AppText variant="muted">• Business budgets</AppText>
-          <AppText variant="muted">• Goals & Calendar</AppText>
-          <AppText variant="muted">• Cloud Sync</AppText>
+          <AppText>
+            Start with a 30-day free trial. After your trial, your subscription
+            continues monthly unless canceled.
+          </AppText>
+
+          <View style={{ gap: 8 }}>
+            <AppText>✓ Today page</AppText>
+            <AppText>✓ Dashboard</AppText>
+            <AppText>✓ Goals</AppText>
+            <AppText>✓ Plan</AppText>
+            <AppText>✓ Calendar</AppText>
+            <AppText>✓ Review</AppText>
+            <AppText>✓ Afford checks</AppText>
+            <AppText>✓ Business and household budgets</AppText>
+          </View>
+
+          <AppButton
+            title={loading ? "Opening Stripe..." : "Start Free Trial"}
+            onPress={startTrial}
+            disabled={loading}
+          />
         </View>
       </AppCard>
-
-      <AppButton
-        title={loading ? "Opening Checkout..." : "Start Free Month"}
-        onPress={handleSubscribe}
-      />
-
-      <AppButton title="Log Out" onPress={handleLogout} variant="outline" />
     </AppPage>
   );
 }
