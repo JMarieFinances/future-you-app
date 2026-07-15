@@ -8,7 +8,11 @@ import { deletePurchase } from "@/lib/purchaseStore";
 import { Household, Purchase } from "@/lib/types";
 import { useEffect, useState } from "react";
 
-type ViewMode = "list" | "setup" | "dashboard" | "transaction";
+type ViewMode =
+  | "list"
+  | "setup"
+  | "dashboard"
+  | "transaction";
 
 export default function HouseholdsScreen() {
   const [selectedHousehold, setSelectedHousehold] =
@@ -17,33 +21,61 @@ export default function HouseholdsScreen() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Purchase | null>(null);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] =
+    useState<ViewMode>("list");
+
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
       await loadAppData();
-      forceUpdate((prev) => prev + 1);
+      forceUpdate((previous) => previous + 1);
     };
 
     loadData();
   }, []);
 
-  if (selectedHousehold && viewMode === "setup") {
+  const refreshSelectedHousehold = async (
+    householdId: string
+  ) => {
+    await loadAppData();
+
+    const updatedHousehold = getHouseholds().find(
+      (household) => household.id === householdId
+    );
+
+    if (updatedHousehold) {
+      setSelectedHousehold(updatedHousehold);
+    }
+
+    forceUpdate((previous) => previous + 1);
+  };
+
+  if (viewMode === "setup") {
     return (
       <HouseholdSetup
-        household={selectedHousehold}
-        onBack={() => setViewMode("dashboard")}
-        onSave={(updated) => {
-          setSelectedHousehold(updated);
+        household={selectedHousehold ?? undefined}
+        onBack={() => {
+          if (selectedHousehold) {
+            setViewMode("dashboard");
+          } else {
+            setViewMode("list");
+          }
+        }}
+        onSave={(savedHousehold) => {
+          setSelectedHousehold(savedHousehold);
+          setSelectedTransaction(null);
           setViewMode("dashboard");
-          forceUpdate((prev) => prev + 1);
+          forceUpdate((previous) => previous + 1);
         }}
       />
     );
   }
 
-  if (selectedHousehold && viewMode === "dashboard") {
+  if (
+    selectedHousehold &&
+    viewMode === "dashboard"
+  ) {
     return (
       <HouseholdDashboard
         household={selectedHousehold}
@@ -51,9 +83,11 @@ export default function HouseholdsScreen() {
           setSelectedHousehold(null);
           setSelectedTransaction(null);
           setViewMode("list");
-          forceUpdate((prev) => prev + 1);
+          forceUpdate((previous) => previous + 1);
         }}
-        onEditBudget={() => setViewMode("setup")}
+        onEditBudget={() => {
+          setViewMode("setup");
+        }}
         onAddTransaction={() => {
           setSelectedTransaction(null);
           setViewMode("transaction");
@@ -63,24 +97,19 @@ export default function HouseholdsScreen() {
           setViewMode("transaction");
         }}
         onDeleteTransaction={async (id) => {
-  await deletePurchase(id);
-  await loadAppData();
-
-  const updatedHousehold = getHouseholds().find(
-    (item) => item.id === selectedHousehold.id
-  );
-
-  if (updatedHousehold) {
-    setSelectedHousehold(updatedHousehold);
-  }
-
-  forceUpdate((prev) => prev + 1);
-}}
+          await deletePurchase(id);
+          await refreshSelectedHousehold(
+            selectedHousehold.id
+          );
+        }}
       />
     );
   }
 
-  if (selectedHousehold && viewMode === "transaction") {
+  if (
+    selectedHousehold &&
+    viewMode === "transaction"
+  ) {
     return (
       <NewHouseholdTransaction
         household={selectedHousehold}
@@ -89,11 +118,15 @@ export default function HouseholdsScreen() {
           setSelectedTransaction(null);
           setViewMode("dashboard");
         }}
-        onSave={(updated) => {
+        onSave={async (updatedHousehold) => {
           setSelectedTransaction(null);
-          setSelectedHousehold(updated);
+          setSelectedHousehold(updatedHousehold);
+
+          await refreshSelectedHousehold(
+            updatedHousehold.id
+          );
+
           setViewMode("dashboard");
-          forceUpdate((prev) => prev + 1);
         }}
       />
     );
@@ -101,12 +134,14 @@ export default function HouseholdsScreen() {
 
   return (
     <HouseholdList
-      onCreate={(household) => {
-        setSelectedHousehold(household);
+      onCreate={() => {
+        setSelectedHousehold(null);
+        setSelectedTransaction(null);
         setViewMode("setup");
       }}
       onOpen={(household) => {
         setSelectedHousehold(household);
+        setSelectedTransaction(null);
         setViewMode("dashboard");
       }}
     />

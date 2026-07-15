@@ -4,31 +4,24 @@ import {
 } from "@/components/budget/budgetUtils";
 import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
-import AppInput from "@/components/ui/AppInput";
 import AppPage from "@/components/ui/AppPage";
 import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
 import EmptyState from "@/components/ui/EmptyState";
 import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
-import { addBusiness, getBusinesses } from "@/lib/businessStore";
+import { getBusinesses } from "@/lib/businessStore";
 import { Business } from "@/lib/types";
 import { router } from "expo-router";
-import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 export default function BusinessList({
   onCreate,
   onOpen,
 }: {
-  onCreate: (business: Business) => void;
+  onCreate: () => void;
   onOpen: (business: Business) => void;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [businessType, setBusinessType] = useState("Side Hustle");
-  const [, forceUpdate] = useState(0);
-
   const businesses = getBusinesses();
 
   const totalRevenue = businesses.reduce(
@@ -54,50 +47,39 @@ export default function BusinessList({
     0
   );
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
-
-    const newBusiness: Business = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      description: description.trim(),
-      businessType: businessType.trim(),
-      budget: {
-        businessIncome: 0,
-        revenueSources: [],
-        operatingExpenses: [],
-        businessSpending: [],
-        businessSavings: [],
-      },
-    };
-
-    await addBusiness(newBusiness);
-
-    setName("");
-    setDescription("");
-    setBusinessType("Side Hustle");
-
-    forceUpdate((prev) => prev + 1);
-    onCreate(newBusiness);
-  };
-
   return (
     <AppPage>
-      <AppButton title="Back to Profile" onPress={() => router.back()} variant="outline" />
+      <AppButton
+        title="Back to Profile"
+        onPress={() => router.back()}
+        variant="outline"
+      />
 
       <PageHeader
         title="Businesses"
-        subtitle="Manage revenue, expenses, cash flow and growth."
+        subtitle="Manage your businesses without mixing their finances with your personal budget."
       />
 
       <AppCard>
-        <AppText variant="muted">Business HQ</AppText>
+        <AppRow>
+          <View style={{ flex: 1 }}>
+            <AppText variant="muted">Business HQ</AppText>
 
-        <View style={{ marginTop: 4 }}>
-          <AppText variant="title">${totalRevenue.toFixed(0)}</AppText>
-        </View>
+            <View style={{ marginTop: 4 }}>
+              <AppText variant="title">
+                ${totalRevenue.toFixed(0)}
+              </AppText>
+            </View>
 
-        <AppText variant="muted">Combined revenue across all businesses.</AppText>
+            <AppText variant="muted">
+              Combined monthly revenue across all businesses.
+            </AppText>
+          </View>
+
+          <View style={{ marginLeft: 12 }}>
+            <AppButton title="Add Business" onPress={onCreate} />
+          </View>
+        </AppRow>
       </AppCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
@@ -105,7 +87,7 @@ export default function BusinessList({
           <MetricCard
             title="Assigned"
             value={`$${totalAssigned.toFixed(0)}`}
-            caption="Operating budget"
+            caption="Planned business funds"
             tone="primary"
           />
         </View>
@@ -114,43 +96,33 @@ export default function BusinessList({
           <MetricCard
             title="Spent"
             value={`$${totalSpent.toFixed(0)}`}
-            caption="Business activity"
+            caption="Business spending"
             tone={totalSpent > totalAssigned ? "danger" : "warning"}
           />
         </View>
       </View>
 
       <AppCard>
-        <AppText variant="section">Create Business</AppText>
-
-        <View style={{ marginTop: 12, gap: 12 }}>
-          <AppInput placeholder="Business Name" value={name} onChangeText={setName} />
-
-          <AppInput
-            placeholder="Description"
-            value={description}
-            onChangeText={setDescription}
-          />
-
-          <AppInput
-            placeholder="Business Type"
-            value={businessType}
-            onChangeText={setBusinessType}
-          />
-
-          <AppButton title="Create Business" onPress={handleCreate} />
-        </View>
-      </AppCard>
-
-      <AppCard>
-        <AppText variant="section">Your Businesses</AppText>
+        <AppRow>
+          <View style={{ flex: 1 }}>
+            <AppText variant="section">Your Businesses</AppText>
+            <AppText variant="muted">
+              Each business has its own budget, calendar and financial plan.
+            </AppText>
+          </View>
+        </AppRow>
 
         {businesses.length === 0 ? (
-          <View style={{ marginTop: 10 }}>
-            <EmptyState message="Create your first business to begin tracking revenue and expenses." />
+          <View style={{ marginTop: 14, gap: 14 }}>
+            <EmptyState message="Create your first business to begin tracking revenue, expenses and growth separately from your personal finances." />
+
+            <AppButton
+              title="Set Up Your First Business"
+              onPress={onCreate}
+            />
           </View>
         ) : (
-          <View style={{ marginTop: 12, gap: 12 }}>
+          <View style={{ marginTop: 14, gap: 12 }}>
             {businesses.map((business) => {
               const assigned =
                 getBudgetTotal(business.budget.operatingExpenses) +
@@ -162,43 +134,92 @@ export default function BusinessList({
                 getSpentTotal(business.budget.businessSpending) +
                 getSpentTotal(business.budget.businessSavings);
 
-              const remaining = business.budget.businessIncome - spent;
+              const remaining =
+                business.budget.businessIncome - spent;
 
               return (
-                <Pressable key={business.id} onPress={() => onOpen(business)}>
+                <Pressable
+                  key={business.id}
+                  onPress={() => onOpen(business)}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.75 : 1,
+                  })}
+                >
                   <AppCard>
                     <AppRow>
-                      <View>
-                        <AppText variant="bold">{business.name}</AppText>
-                        <AppText variant="muted">{business.businessType}</AppText>
+                      <View style={{ flex: 1 }}>
+                        <AppText variant="bold">
+                          {business.name}
+                        </AppText>
+
+                        <AppText variant="muted">
+                          {business.businessType}
+                        </AppText>
                       </View>
 
-                      <AppText variant="bold">${remaining.toFixed(0)} left</AppText>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <AppText
+                          variant="bold"
+                          style={{
+                            color:
+                              remaining < 0
+                                ? "#DC2626"
+                                : undefined,
+                          }}
+                        >
+                          ${remaining.toFixed(0)}
+                        </AppText>
+
+                        <AppText variant="muted">
+                          available
+                        </AppText>
+                      </View>
                     </AppRow>
 
                     {business.description ? (
-                      <View style={{ marginTop: 8 }}>
-                        <AppText variant="muted">{business.description}</AppText>
+                      <View style={{ marginTop: 10 }}>
+                        <AppText variant="muted">
+                          {business.description}
+                        </AppText>
                       </View>
                     ) : null}
 
-                    <View style={{ marginTop: 12, gap: 6 }}>
+                    <View style={{ marginTop: 14, gap: 8 }}>
                       <AppRow>
-                        <AppText variant="muted">Revenue</AppText>
+                        <AppText variant="muted">
+                          Monthly revenue
+                        </AppText>
+
                         <AppText variant="bold">
                           ${business.budget.businessIncome.toFixed(0)}
                         </AppText>
                       </AppRow>
 
                       <AppRow>
-                        <AppText variant="muted">Assigned</AppText>
-                        <AppText variant="bold">${assigned.toFixed(0)}</AppText>
+                        <AppText variant="muted">
+                          Assigned
+                        </AppText>
+
+                        <AppText variant="bold">
+                          ${assigned.toFixed(0)}
+                        </AppText>
                       </AppRow>
 
                       <AppRow>
-                        <AppText variant="muted">Spent</AppText>
-                        <AppText variant="bold">${spent.toFixed(0)}</AppText>
+                        <AppText variant="muted">
+                          Spent
+                        </AppText>
+
+                        <AppText variant="bold">
+                          ${spent.toFixed(0)}
+                        </AppText>
                       </AppRow>
+                    </View>
+
+                    <View style={{ marginTop: 14 }}>
+                      <AppText variant="muted">
+                        Open business workspace →
+                      </AppText>
                     </View>
                   </AppCard>
                 </Pressable>

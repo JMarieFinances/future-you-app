@@ -188,10 +188,7 @@ export function getFinancialSummary() {
     )
     .reduce((sum, business) => sum + business.budget.businessIncome, 0);
 
-  const personalBaseIncome =
-    businessMainIncome > 0
-      ? businessMainIncome + personalIncomeLogged
-      : plan.income + businessCombinedIncome + personalIncomeLogged;
+ const personalBaseIncome = plan.income;
 
   const businessIncome =
     businessMainIncome + businessCombinedIncome + businessSeparateIncome;
@@ -208,13 +205,11 @@ export function getFinancialSummary() {
   const plannedPersonalTotal =
     fixedExpenses + subscriptions + debt + lifestyle + goalMonthly;
 
-  const totalAssigned =
-    plannedPersonalTotal + householdAssigned + businessAssigned;
+ const totalAssigned = plannedPersonalTotal;
 
-  const totalIncome =
-    personalBaseIncome + householdIncome + businessSeparateIncome;
+const totalIncome = personalBaseIncome;
 
-  const totalSpent = personalSpent + householdSpent + businessSpent;
+const totalSpent = personalSpent;
 
   const safeToSpend =
   personalBaseIncome -

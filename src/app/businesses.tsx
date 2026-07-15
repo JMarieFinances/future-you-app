@@ -8,43 +8,74 @@ import { deletePurchase } from "@/lib/purchaseStore";
 import { Business, Purchase } from "@/lib/types";
 import { useEffect, useState } from "react";
 
-type ViewMode = "list" | "setup" | "dashboard" | "transaction";
+type ViewMode =
+  | "list"
+  | "setup"
+  | "dashboard"
+  | "transaction";
 
 export default function BusinessesScreen() {
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(
-    null
-  );
+  const [selectedBusiness, setSelectedBusiness] =
+    useState<Business | null>(null);
 
   const [selectedTransaction, setSelectedTransaction] =
     useState<Purchase | null>(null);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] =
+    useState<ViewMode>("list");
+
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
       await loadAppData();
-      forceUpdate((prev) => prev + 1);
+      forceUpdate((previous) => previous + 1);
     };
 
     loadData();
   }, []);
 
-  if (selectedBusiness && viewMode === "setup") {
+  const refreshSelectedBusiness = async (
+    businessId: string
+  ) => {
+    await loadAppData();
+
+    const updatedBusiness = getBusinesses().find(
+      (business) => business.id === businessId
+    );
+
+    if (updatedBusiness) {
+      setSelectedBusiness(updatedBusiness);
+    }
+
+    forceUpdate((previous) => previous + 1);
+  };
+
+  if (viewMode === "setup") {
     return (
       <BusinessSetup
-        business={selectedBusiness}
-        onBack={() => setViewMode("dashboard")}
-        onSave={(updated) => {
-          setSelectedBusiness(updated);
+        business={selectedBusiness ?? undefined}
+        onBack={() => {
+          if (selectedBusiness) {
+            setViewMode("dashboard");
+          } else {
+            setViewMode("list");
+          }
+        }}
+        onSave={(savedBusiness) => {
+          setSelectedBusiness(savedBusiness);
+          setSelectedTransaction(null);
           setViewMode("dashboard");
-          forceUpdate((prev) => prev + 1);
+          forceUpdate((previous) => previous + 1);
         }}
       />
     );
   }
 
-  if (selectedBusiness && viewMode === "dashboard") {
+  if (
+    selectedBusiness &&
+    viewMode === "dashboard"
+  ) {
     return (
       <BusinessDashboard
         business={selectedBusiness}
@@ -52,9 +83,11 @@ export default function BusinessesScreen() {
           setSelectedBusiness(null);
           setSelectedTransaction(null);
           setViewMode("list");
-          forceUpdate((prev) => prev + 1);
+          forceUpdate((previous) => previous + 1);
         }}
-        onEditBudget={() => setViewMode("setup")}
+        onEditBudget={() => {
+          setViewMode("setup");
+        }}
         onAddTransaction={() => {
           setSelectedTransaction(null);
           setViewMode("transaction");
@@ -63,25 +96,20 @@ export default function BusinessesScreen() {
           setSelectedTransaction(transaction);
           setViewMode("transaction");
         }}
-       onDeleteTransaction={async (id) => {
-  await deletePurchase(id);
-  await loadAppData();
-
-  const updatedBusiness = getBusinesses().find(
-    (item) => item.id === selectedBusiness.id
-  );
-
-  if (updatedBusiness) {
-    setSelectedBusiness(updatedBusiness);
-  }
-
-  forceUpdate((prev) => prev + 1);
-}}
+        onDeleteTransaction={async (id) => {
+          await deletePurchase(id);
+          await refreshSelectedBusiness(
+            selectedBusiness.id
+          );
+        }}
       />
     );
   }
 
-  if (selectedBusiness && viewMode === "transaction") {
+  if (
+    selectedBusiness &&
+    viewMode === "transaction"
+  ) {
     return (
       <NewBusinessTransaction
         business={selectedBusiness}
@@ -90,11 +118,15 @@ export default function BusinessesScreen() {
           setSelectedTransaction(null);
           setViewMode("dashboard");
         }}
-        onSave={(updated) => {
+        onSave={async (updatedBusiness) => {
           setSelectedTransaction(null);
-          setSelectedBusiness(updated);
+          setSelectedBusiness(updatedBusiness);
+
+          await refreshSelectedBusiness(
+            updatedBusiness.id
+          );
+
           setViewMode("dashboard");
-          forceUpdate((prev) => prev + 1);
         }}
       />
     );
@@ -102,12 +134,14 @@ export default function BusinessesScreen() {
 
   return (
     <BusinessList
-      onCreate={(business) => {
-        setSelectedBusiness(business);
+      onCreate={() => {
+        setSelectedBusiness(null);
+        setSelectedTransaction(null);
         setViewMode("setup");
       }}
       onOpen={(business) => {
         setSelectedBusiness(business);
+        setSelectedTransaction(null);
         setViewMode("dashboard");
       }}
     />

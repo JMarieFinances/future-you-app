@@ -9,6 +9,7 @@ import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
 import { updateAppData } from "@/lib/appStore";
 import type { CalendarEvent } from "@/lib/calendarStore";
+import { getFinancialSummary } from "@/lib/financeEngine";
 import { getPlanData } from "@/lib/planStore";
 import type { Goal, PlanData } from "@/lib/types";
 import { useTheme } from "@/lib/useTheme";
@@ -128,13 +129,7 @@ export default function PlanTab() {
   const protectedTotal = fixedTotal + subscriptionsTotal + plan.debt + plan.goalContributions;
   const flexibleTotal = plan.lifestyle;
 
-  const finalSafeToSpend =
-    plan.income -
-    plan.obligations -
-    subscriptionsTotal -
-    plan.debt -
-    plan.lifestyle -
-    plan.goalContributions;
+  const finalSafeToSpend = getFinancialSummary().safeToSpend;
 
   const savingsRate = percentOf(plan.goalContributions, plan.income);
   const fixedRate = percentOf(fixedTotal, plan.income);

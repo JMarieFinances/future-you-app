@@ -1,35 +1,37 @@
-import { getBudgetTotal, getSpentTotal } from "@/components/budget/budgetUtils";
+import {
+  getBudgetTotal,
+  getSpentTotal,
+} from "@/components/budget/budgetUtils";
 import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
-import AppInput from "@/components/ui/AppInput";
 import AppPage from "@/components/ui/AppPage";
 import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
 import EmptyState from "@/components/ui/EmptyState";
 import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
-import { addHousehold, getHouseholds } from "@/lib/householdStore";
+import { getHouseholds } from "@/lib/householdStore";
 import { Household } from "@/lib/types";
 import { router } from "expo-router";
-import { useState } from "react";
 import { Pressable, View } from "react-native";
+
+const formatMoney = (amount: number) =>
+  `$${amount.toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  })}`;
 
 export default function HouseholdList({
   onCreate,
   onOpen,
 }: {
-  onCreate: (household: Household) => void;
+  onCreate: () => void;
   onOpen: (household: Household) => void;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [members, setMembers] = useState("1");
-  const [, forceUpdate] = useState(0);
-
   const households = getHouseholds();
 
   const totalIncome = households.reduce(
-    (sum, household) => sum + household.budget.householdIncome,
+    (sum, household) =>
+      sum + household.budget.householdIncome,
     0
   );
 
@@ -51,60 +53,54 @@ export default function HouseholdList({
     0
   );
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
-
-    const newHousehold: Household = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      description: description.trim(),
-      members: Number(members) || 1,
-      budget: {
-        householdIncome: 0,
-        incomeSources: [],
-        bills: [],
-        spending: [],
-        savings: [],
-      },
-    };
-
-    await addHousehold(newHousehold);
-
-    setName("");
-    setDescription("");
-    setMembers("1");
-
-    forceUpdate((prev) => prev + 1);
-    onCreate(newHousehold);
-  };
+  const totalAvailable = totalIncome - totalSpent;
 
   return (
     <AppPage>
-      <AppButton title="Back to Profile" onPress={() => router.back()} variant="outline" />
+      <AppButton
+  title="Back to Profile"
+  onPress={() => router.replace("/(tabs)/profile")}
+  variant="outline"
+/>
 
       <PageHeader
         title="Households"
-        subtitle="Manage shared money, bills, spending, and household savings."
+        subtitle="Manage shared income, bills, spending, and savings."
       />
 
       <AppCard>
-        <AppText variant="muted">Shared Money Hub</AppText>
+        <AppRow>
+          <View style={{ flex: 1 }}>
+            <AppText variant="muted">
+              Shared Money Hub
+            </AppText>
 
-        <View style={{ marginTop: 4 }}>
-          <AppText variant="title">${totalIncome.toFixed(0)}</AppText>
-        </View>
+            <View style={{ marginTop: 4 }}>
+              <AppText variant="title">
+                {formatMoney(totalAvailable)}
+              </AppText>
+            </View>
 
-        <AppText variant="muted">
-          Total household income across all shared budgets.
-        </AppText>
+            <AppText variant="muted">
+              Available across all household budgets.
+            </AppText>
+          </View>
+
+          <View style={{ marginLeft: 12 }}>
+            <AppButton
+              title="Add Household"
+              onPress={onCreate}
+            />
+          </View>
+        </AppRow>
       </AppCard>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}>
           <MetricCard
-            title="Assigned"
-            value={`$${totalAssigned.toFixed(0)}`}
-            caption="Planned"
+            title="Income"
+            value={formatMoney(totalIncome)}
+            caption="Combined monthly"
             tone="primary"
           />
         </View>
@@ -112,96 +108,186 @@ export default function HouseholdList({
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Spent"
-            value={`$${totalSpent.toFixed(0)}`}
-            caption="Logged"
-            tone={totalSpent > totalAssigned ? "danger" : "warning"}
+            value={formatMoney(totalSpent)}
+            caption="Shared activity"
+            tone={
+              totalSpent > totalIncome
+                ? "danger"
+                : "warning"
+            }
+          />
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <MetricCard
+            title="Assigned"
+            value={formatMoney(totalAssigned)}
+            caption="Planned funds"
+            tone="primary"
+          />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <MetricCard
+            title="Households"
+            value={String(households.length)}
+            caption="Active budgets"
+            tone="success"
           />
         </View>
       </View>
 
       <AppCard>
-        <AppText variant="section">Create Household</AppText>
+        <AppText variant="section">
+          Your Households
+        </AppText>
 
-        <View style={{ marginTop: 12, gap: 12 }}>
-          <AppInput
-            placeholder="Household name"
-            value={name}
-            onChangeText={setName}
-          />
-
-          <AppInput
-            placeholder="Description (optional)"
-            value={description}
-            onChangeText={setDescription}
-          />
-
-          <AppInput
-            placeholder="Number of contributors"
-            value={members}
-            onChangeText={setMembers}
-            keyboardType="numeric"
-          />
-
-          <AppButton title="Create Household" onPress={handleCreate} />
+        <View style={{ marginTop: 4 }}>
+          <AppText variant="muted">
+            Each household has its own budget, calendar,
+            transactions, and affordability tools.
+          </AppText>
         </View>
-      </AppCard>
-
-      <AppCard>
-        <AppText variant="section">Your Households</AppText>
 
         {households.length === 0 ? (
-          <View style={{ marginTop: 10 }}>
-            <EmptyState message="No households yet. Create one to manage shared bills and spending." />
+          <View style={{ marginTop: 14, gap: 14 }}>
+            <EmptyState message="Create a household to manage shared income, bills, spending, and savings in one place." />
+
+            <AppButton
+              title="Set Up Your First Household"
+              onPress={onCreate}
+            />
           </View>
         ) : (
-          <View style={{ marginTop: 12, gap: 12 }}>
+          <View style={{ marginTop: 14, gap: 12 }}>
             {households.map((household) => {
               const assigned =
                 getBudgetTotal(household.budget.bills) +
-                getBudgetTotal(household.budget.spending) +
-                getBudgetTotal(household.budget.savings);
+                getBudgetTotal(
+                  household.budget.spending
+                ) +
+                getBudgetTotal(
+                  household.budget.savings
+                );
 
               const spent =
                 getSpentTotal(household.budget.bills) +
-                getSpentTotal(household.budget.spending) +
-                getSpentTotal(household.budget.savings);
+                getSpentTotal(
+                  household.budget.spending
+                ) +
+                getSpentTotal(
+                  household.budget.savings
+                );
 
-              const remaining = household.budget.householdIncome - spent;
+              const remaining =
+                household.budget.householdIncome - spent;
+
+              const unassigned =
+                household.budget.householdIncome -
+                assigned;
 
               return (
-                <Pressable key={household.id} onPress={() => onOpen(household)}>
+                <Pressable
+                  key={household.id}
+                  onPress={() => onOpen(household)}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.75 : 1,
+                  })}
+                >
                   <AppCard>
                     <AppRow>
-                      <View>
-                        <AppText variant="bold">{household.name}</AppText>
+                      <View style={{ flex: 1 }}>
+                        <AppText variant="bold">
+                          {household.name}
+                        </AppText>
 
                         <AppText variant="muted">
                           {household.members} contributor
-                          {household.members === 1 ? "" : "s"}
-                          {household.description ? ` · ${household.description}` : ""}
+                          {household.members === 1
+                            ? ""
+                            : "s"}
                         </AppText>
                       </View>
 
-                      <AppText variant="bold">${remaining.toFixed(0)} left</AppText>
+                      <View
+                        style={{
+                          alignItems: "flex-end",
+                        }}
+                      >
+                        <AppText variant="bold">
+                          {formatMoney(remaining)}
+                        </AppText>
+
+                        <AppText variant="muted">
+                          available
+                        </AppText>
+                      </View>
                     </AppRow>
 
-                    <View style={{ marginTop: 10, gap: 6 }}>
+                    {household.description ? (
+                      <View style={{ marginTop: 10 }}>
+                        <AppText variant="muted">
+                          {household.description}
+                        </AppText>
+                      </View>
+                    ) : null}
+
+                    <View
+                      style={{
+                        marginTop: 14,
+                        gap: 8,
+                      }}
+                    >
                       <AppRow>
-                        <AppText variant="muted">Income</AppText>
+                        <AppText variant="muted">
+                          Monthly income
+                        </AppText>
+
                         <AppText variant="bold">
-                          ${household.budget.householdIncome.toFixed(0)}
+                          {formatMoney(
+                            household.budget
+                              .householdIncome
+                          )}
                         </AppText>
                       </AppRow>
 
                       <AppRow>
-                        <AppText variant="muted">Assigned</AppText>
-                        <AppText variant="bold">${assigned.toFixed(0)}</AppText>
+                        <AppText variant="muted">
+                          Assigned
+                        </AppText>
+
+                        <AppText variant="bold">
+                          {formatMoney(assigned)}
+                        </AppText>
                       </AppRow>
 
                       <AppRow>
-                        <AppText variant="muted">Spent</AppText>
-                        <AppText variant="bold">${spent.toFixed(0)}</AppText>
+                        <AppText variant="muted">
+                          Spent
+                        </AppText>
+
+                        <AppText variant="bold">
+                          {formatMoney(spent)}
+                        </AppText>
                       </AppRow>
+
+                      <AppRow>
+                        <AppText variant="muted">
+                          Unassigned
+                        </AppText>
+
+                        <AppText variant="bold">
+                          {formatMoney(unassigned)}
+                        </AppText>
+                      </AppRow>
+                    </View>
+
+                    <View style={{ marginTop: 14 }}>
+                      <AppText variant="muted">
+                        Open household workspace →
+                      </AppText>
                     </View>
                   </AppCard>
                 </Pressable>

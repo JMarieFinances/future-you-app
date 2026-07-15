@@ -3,7 +3,16 @@ export type BudgetItem = {
   name: string;
   budget: number;
   spent: number;
+  dueDay?: number;
+  notes?: string;
 };
+
+export type PurchaseType = "income" | "expense";
+
+export type BudgetType =
+  | "personal"
+  | "household"
+  | "business";
 
 export type Purchase = {
   id: string;
@@ -13,8 +22,8 @@ export type Purchase = {
   subcategory?: string;
   date: string;
   notes?: string;
-  type: "income" | "expense";
-  budgetType: "personal" | "household" | "business";
+  type: PurchaseType;
+  budgetType: BudgetType;
   budgetId?: string;
 };
 
@@ -33,7 +42,13 @@ export type Household = {
   members: number;
   budget: HouseholdBudget;
   includedInPersonalPlan: boolean;
+  personalContribution?: number;
 };
+
+export type BusinessIncomeMode =
+  | "main"
+  | "combined"
+  | "separate";
 
 export type BusinessBudget = {
   businessIncome: number;
@@ -48,8 +63,9 @@ export type Business = {
   name: string;
   description: string;
   businessType: string;
+  incomeMode: BusinessIncomeMode;
+  ownerPay: number;
   budget: BusinessBudget;
-  incomeMode: "main" | "combined" | "separate";
 };
 
 export type NotificationSettings = {
@@ -107,12 +123,90 @@ export type PlanData = {
   lifestyleDetails: Record<string, number>;
 
   subscriptions: number;
-subscriptionDetails: Record<string, number>;
-subscriptionDueDates?: Record<string, number>;
-obligationDueDates?: Record<string, number>;
+  subscriptionDetails: Record<string, number>;
+  subscriptionDueDates?: Record<string, number>;
+  obligationDueDates?: Record<string, number>;
 
   goals: Goal[];
   goalCollections?: GoalCollection[];
+};
+
+export type CalendarEventRepeat =
+  | "never"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "yearly";
+
+export type CalendarEventType =
+  | "payday"
+  | "bill"
+  | "goal"
+  | "business"
+  | "household"
+  | "review"
+  | "custom";
+
+export type CalendarEventSourceType =
+  | "personal"
+  | "household"
+  | "business"
+  | "goal"
+  | "system";
+
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  amount?: number;
+
+  day: number;
+  month?: number;
+  year?: number;
+
+  repeat?: CalendarEventRepeat;
+  type: CalendarEventType;
+
+  notes?: string;
+
+  sourceId?: string;
+  sourceType?: CalendarEventSourceType;
+
+  completed?: boolean;
+  createdAt?: string;
+};
+
+export type PaySchedule =
+  | "weekly"
+  | "biweekly"
+  | "twice-monthly"
+  | "monthly"
+  | "variable";
+
+export type BudgetStyle =
+  | "zero-based"
+  | "50-30-20"
+  | "custom";
+
+export type PaydayConfig = {
+  nextDate?: string;
+  firstDay?: number;
+  secondDay?: number;
+  weekday?: number;
+  monthlyDay?: number;
+};
+
+export type AppSettings = {
+  theme: ThemeType;
+  notifications: NotificationSettings;
+
+  onboarded?: boolean;
+  userName?: string;
+
+  paySchedule?: PaySchedule;
+  budgetStyle?: BudgetStyle;
+  primaryGoal?: string;
+
+  paydayConfig?: PaydayConfig;
 };
 
 export type AppData = {
@@ -120,42 +214,6 @@ export type AppData = {
   purchases: Purchase[];
   households: Household[];
   businesses: Business[];
-
-  calendarEvents?: {
-    id: string;
-    title: string;
-    amount?: number;
-    day: number;
-    month?: number;
-    year?: number;
-    repeat?: "never" | "weekly" | "biweekly" | "monthly" | "yearly";
-    type:
-      | "payday"
-      | "bill"
-      | "goal"
-      | "business"
-      | "household"
-      | "review"
-      | "custom";
-    notes?: string;
-    sourceId?: string;
-    sourceType?: "personal" | "household" | "business" | "goal" | "system";
-  }[];
-
-  settings: {
-    theme: ThemeType;
-    notifications: NotificationSettings;
-    onboarded?: boolean;
-    userName?: string;
-    paySchedule?: "weekly" | "biweekly" | "twice-monthly" | "monthly" | "variable";
-    budgetStyle?: "zero-based" | "50-30-20" | "custom";
-    primaryGoal?: string;
-    paydayConfig?: {
-  nextDate?: string;
-  firstDay?: number;
-  secondDay?: number;
-  weekday?: number;
-  monthlyDay?: number;
-};
-  };
+  calendarEvents?: CalendarEvent[];
+  settings: AppSettings;
 };
