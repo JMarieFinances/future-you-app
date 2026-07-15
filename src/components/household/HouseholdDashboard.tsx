@@ -2,42 +2,52 @@ import {
   getBudgetTotal,
   getSpentTotal,
 } from "@/components/budget/budgetUtils";
+import WorkspaceCalendar from "@/components/calendar/WorkspaceCalendar";
 import HouseholdPlan from "@/components/household/HouseholdPlan";
-import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
-import AppInput from "@/components/ui/AppInput";
-import AppPage from "@/components/ui/AppPage";
-import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
-import EmptyState from "@/components/ui/EmptyState";
-import MetricCard from "@/components/ui/MetricCard";
-import PageHeader from "@/components/ui/PageHeader";
+import WorkspaceAfford from "@/components/workspace/WorkspaceAfford";
+import WorkspaceChat from "@/components/workspace/WorkspaceChat";
+import WorkspaceDashboard, {
+  type WorkspaceTab,
+} from "@/components/workspace/WorkspaceDashboard";
+import WorkspaceHome from "@/components/workspace/WorkspaceHome";
+import WorkspaceMembers from "@/components/workspace/WorkspaceMembers";
+import WorkspaceTransactions from "@/components/workspace/WorkspaceTransactions";
+import { getCalendarEvents } from "@/lib/calendarStore";
 import { getPurchases } from "@/lib/purchaseStore";
-import { Household, Purchase } from "@/lib/types";
-import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import {
+  getOrCreateSharedWorkspace,
+  subscribeToSharedWorkspace,
+} from "@/lib/sharedWorkspaceStore";
+import type {
+  Household,
+  Purchase,
+} from "@/lib/types";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import { View } from "react-native";
 
-type HouseholdTab =
-  | "today"
-  | "plan"
-  | "afford"
-  | "calendar";
-
-const formatMoney = (amount: number) =>
-  `$${amount.toLocaleString(undefined, {
-    maximumFractionDigits: 0,
-  })}`;
-
-const cleanAmount = (value: string) => {
-  const cleaned = value.replace(/[^0-9.]/g, "");
-  const parts = cleaned.split(".");
-
-  if (parts.length <= 1) {
-    return cleaned;
-  }
-
-  return `${parts[0]}.${parts.slice(1).join("")}`;
+type Props = {
+  household: Household;
+  onBack: () => void;
+  onEditBudget: () => void;
+  onAddTransaction: () => void;
+  onEditTransaction: (
+    transaction: Purchase
+  ) => void;
+  onDeleteTransaction: (
+    transactionId: string
+  ) => void;
 };
+
+type HouseholdWithContribution =
+  Household & {
+    personalContribution?: number;
+  };
 
 export default function HouseholdDashboard({
   household,
@@ -46,25 +56,39 @@ export default function HouseholdDashboard({
   onAddTransaction,
   onEditTransaction,
   onDeleteTransaction,
-}: {
-  household: Household;
-  onBack: () => void;
-  onEditBudget: () => void;
-  onAddTransaction: () => void;
-  onEditTransaction: (transaction: Purchase) => void;
-  onDeleteTransaction: (transactionId: string) => void;
-}) {
+}: Props) {
   const [activeTab, setActiveTab] =
-    useState<HouseholdTab>("today");
+    useState<WorkspaceTab>("overview");
 
-  const [affordName, setAffordName] = useState("");
-  const [affordAmount, setAffordAmount] = useState("");
+  const [sharedWorkspaceId, setSharedWorkspaceId] =
+    useState("");
 
-  const transactions = getPurchases().filter(
-    (purchase) =>
-      purchase.budgetType === "household" &&
-      purchase.budgetId === household.id
+  const [workspaceLoading, setWorkspaceLoading] =
+    useState(true);
+
+  const [workspaceError, setWorkspaceError] =
+    useState("");
+
+  const transactions = getPurchases()
+    .filter(
+      (purchase) =>
+        purchase.budgetType === "household" &&
+        purchase.budgetId === household.id
+    )
+    .sort(
+      (first, second) =>
+        new Date(second.date).getTime() -
+        new Date(first.date).getTime()
+    );
+
+  const householdEvents = getCalendarEvents().filter(
+    (event) =>
+      event.sourceType === "household" &&
+      event.sourceId === household.id
   );
+
+  const income =
+    household.budget.householdIncome;
 
   const billsBudget = getBudgetTotal(
     household.budget.bills
@@ -78,8 +102,10 @@ export default function HouseholdDashboard({
     household.budget.savings
   );
 
-  const totalAssigned =
-    billsBudget + spendingBudget + savingsBudget;
+  const assigned =
+    billsBudget +
+    spendingBudget +
+    savingsBudget;
 
   const billsSpent = getSpentTotal(
     household.budget.bills
@@ -93,507 +119,231 @@ export default function HouseholdDashboard({
     household.budget.savings
   );
 
-  const totalSpent =
-    billsSpent + spendingSpent + savingsSpent;
+  const spent =
+    billsSpent +
+    spendingSpent +
+    savingsSpent;
 
-  const available =
-    household.budget.householdIncome - totalSpent;
+  const available = income - spent;
 
   const plannedAvailable =
-    household.budget.householdIncome - totalAssigned;
+    income - assigned;
 
-  const recentTransactions = [...transactions]
-    .sort(
-      (first, second) =>
-        new Date(second.date).getTime() -
-        new Date(first.date).getTime()
-    )
-    .slice(0, 5);
+  const householdWithContribution =
+    household as HouseholdWithContribution;
 
-  const purchaseAmount = Number(affordAmount) || 0;
+  const personalContribution =
+    household.includedInPersonalPlan
+      ? householdWithContribution.personalContribution ??
+        0
+      : 0;
 
-  const affordability = useMemo(() => {
-    if (purchaseAmount <= 0) {
-      return {
-        title: "Enter an amount",
-        message:
-          "Add a purchase amount to check it against this household budget.",
-        approved: false,
-      };
+  const subtitle = `${household.members} contributor${
+    household.members === 1 ? "" : "s"
+  }${
+    household.description
+      ? ` · ${household.description}`
+      : ""
+  }`;
+
+  const loadSharedWorkspace =
+    useCallback(async () => {
+      setWorkspaceLoading(true);
+      setWorkspaceError("");
+
+      try {
+        const sharedWorkspace =
+          await getOrCreateSharedWorkspace(
+            "household",
+            household
+          );
+
+        setSharedWorkspaceId(
+          sharedWorkspace.id
+        );
+      } catch (error) {
+        setSharedWorkspaceId("");
+
+        setWorkspaceError(
+          error instanceof Error
+            ? error.message
+            : "Unable to connect this household to its shared workspace."
+        );
+      } finally {
+        setWorkspaceLoading(false);
+      }
+    }, [
+      household.id,
+      household.name,
+      household.description,
+    ]);
+
+  useEffect(() => {
+    loadSharedWorkspace();
+  }, [loadSharedWorkspace]);
+
+  useEffect(() => {
+    if (!sharedWorkspaceId) {
+      return;
     }
 
-    if (purchaseAmount <= Math.max(available, 0)) {
-      return {
-        title: "This purchase fits",
-        message: `${formatMoney(
-          available - purchaseAmount
-        )} would remain afterward.`,
-        approved: true,
-      };
-    }
-
-    return {
-      title: "This purchase does not fit",
-      message: `The household is short ${formatMoney(
-        purchaseAmount - Math.max(available, 0)
-      )}.`,
-      approved: false,
-    };
-  }, [available, purchaseAmount]);
-
-  const health = useMemo(() => {
-    const income = household.budget.householdIncome;
-
-    if (income <= 0 || available < 0) {
-      return {
-        label: "At Risk",
-        message:
-          "Household spending is higher than the available monthly income.",
-      };
-    }
-
-    if (plannedAvailable < 0) {
-      return {
-        label: "Overplanned",
-        message:
-          "The household plan assigns more money than it receives.",
-      };
-    }
-
-    if ((available / income) * 100 < 10) {
-      return {
-        label: "Needs Attention",
-        message:
-          "Very little household money remains after current spending.",
-      };
-    }
-
-    return {
-      label: "Healthy",
-      message:
-        "The household currently has positive funds available.",
-    };
+    return subscribeToSharedWorkspace(
+      sharedWorkspaceId,
+      loadSharedWorkspace
+    );
   }, [
-    available,
-    household.budget.householdIncome,
-    plannedAvailable,
+    sharedWorkspaceId,
+    loadSharedWorkspace,
   ]);
 
-  const tabs: {
-    key: HouseholdTab;
-    label: string;
-  }[] = [
-    { key: "today", label: "Today" },
-    { key: "plan", label: "Plan" },
-    { key: "afford", label: "Afford" },
-    { key: "calendar", label: "Calendar" },
-  ];
-
-  const renderTabs = () => (
-    <AppCard>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        {tabs.map((tab) => {
-          const selected = activeTab === tab.key;
-
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
-              style={({ pressed }) => ({
-                flex: 1,
-                opacity: pressed ? 0.7 : 1,
-                paddingVertical: 11,
-                paddingHorizontal: 6,
-                borderRadius: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: selected
-                  ? "rgba(120, 120, 120, 0.18)"
-                  : "transparent",
-              })}
-            >
-              <AppText
-                variant={selected ? "bold" : "muted"}
-              >
-                {tab.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
-    </AppCard>
-  );
-
-  const renderToday = () => (
-    <>
-      <AppCard>
-        <AppRow>
-          <View style={{ flex: 1 }}>
-            <AppText variant="muted">
-              Household available
-            </AppText>
-
-            <View style={{ marginTop: 4 }}>
-              <AppText variant="title">
-                {formatMoney(available)}
-              </AppText>
-            </View>
-
-            <AppText variant="muted">
-              After shared spending
-            </AppText>
-          </View>
-
-          <View style={{ alignItems: "flex-end" }}>
-            <AppText variant="bold">
-              {health.label}
-            </AppText>
-
-            <AppText variant="muted">
-              Budget health
-            </AppText>
-          </View>
-        </AppRow>
-
-        <View style={{ marginTop: 14 }}>
-          <AppText variant="muted">
-            {health.message}
-          </AppText>
-        </View>
-      </AppCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Income"
-            value={formatMoney(
-              household.budget.householdIncome
-            )}
-            caption="Monthly"
-            tone="primary"
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Spent"
-            value={formatMoney(totalSpent)}
-            caption="Current activity"
-            tone={
-              totalSpent >
-              household.budget.householdIncome
-                ? "danger"
-                : "warning"
-            }
-          />
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Assigned"
-            value={formatMoney(totalAssigned)}
-            caption="Monthly plan"
-            tone={
-              plannedAvailable < 0
-                ? "danger"
-                : "primary"
-            }
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Your Share"
-            value={formatMoney(
-              household.includedInPersonalPlan
-                ? household.personalContribution ?? 0
-                : 0
-            )}
-            caption={
+  return (
+    <WorkspaceDashboard
+      title={household.name}
+      subtitle={subtitle}
+      backLabel="Back to Households"
+      onBack={onBack}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      overview={
+        <WorkspaceHome
+          workspaceId={sharedWorkspaceId}
+          workspaceLabel="Household"
+          incomeLabel="Household Income"
+          income={income}
+          assigned={assigned}
+          spent={spent}
+          available={available}
+          plannedAvailable={
+            plannedAvailable
+          }
+          transactions={transactions}
+          events={householdEvents}
+          savingsItems={
+            household.budget.savings
+          }
+          secondaryMetric={{
+            title: "Your Share",
+            value: personalContribution,
+            caption:
               household.includedInPersonalPlan
                 ? "Personal contribution"
-                : "Kept separate"
-            }
-            tone="success"
-          />
-        </View>
-      </View>
-
-      <AppCard>
-        <AppRow>
-          <View style={{ flex: 1 }}>
-            <AppText variant="section">
-              Week at a Glance
-            </AppText>
-
-            <AppText variant="muted">
-              Current shared activity
-            </AppText>
-          </View>
-
-          <AppButton
-            title="Add"
-            onPress={onAddTransaction}
-          />
-        </AppRow>
-
-        <View style={{ marginTop: 14, gap: 12 }}>
-          <AppRow>
-            <AppText variant="muted">
-              Bills
-            </AppText>
-
-            <AppText variant="bold">
-              {formatMoney(billsSpent)}
-            </AppText>
-          </AppRow>
-
-          <AppRow>
-            <AppText variant="muted">
-              Household spending
-            </AppText>
-
-            <AppText variant="bold">
-              {formatMoney(spendingSpent)}
-            </AppText>
-          </AppRow>
-
-          <AppRow>
-            <AppText variant="muted">
-              Savings contributions
-            </AppText>
-
-            <AppText variant="bold">
-              {formatMoney(savingsSpent)}
-            </AppText>
-          </AppRow>
-
-          <AppRow>
-            <AppText variant="muted">
-              Planned remaining
-            </AppText>
-
-            <AppText variant="bold">
-              {formatMoney(plannedAvailable)}
-            </AppText>
-          </AppRow>
-        </View>
-      </AppCard>
-
-      <AppCard>
-        <AppRow>
-          <View style={{ flex: 1 }}>
-            <AppText variant="section">
-              Recent Transactions
-            </AppText>
-
-            <AppText variant="muted">
-              Latest household activity
-            </AppText>
-          </View>
-
-          <AppButton
-            title="New"
-            onPress={onAddTransaction}
-            variant="outline"
-          />
-        </AppRow>
-
-        {recentTransactions.length === 0 ? (
-          <View style={{ marginTop: 14 }}>
-            <EmptyState message="No household transactions yet." />
-          </View>
-        ) : (
-          <View style={{ marginTop: 14, gap: 10 }}>
-            {recentTransactions.map((transaction) => (
-              <Pressable
-                key={transaction.id}
-                onPress={() =>
-                  onEditTransaction(transaction)
-                }
-                style={({ pressed }) => ({
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <AppCard>
-                  <AppRow>
-                    <View style={{ flex: 1 }}>
-                      <AppText variant="bold">
-                        {transaction.name}
-                      </AppText>
-
-                      <AppText variant="muted">
-                        {transaction.subcategory ??
-                          transaction.category}
-                      </AppText>
-                    </View>
-
-                    <AppText variant="bold">
-                      {formatMoney(transaction.amount)}
-                    </AppText>
-                  </AppRow>
-                </AppCard>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </AppCard>
-    </>
-  );
-
-  const renderAfford = () => (
-    <>
-      <AppCard>
-        <AppText variant="section">
-          Household Purchase
-        </AppText>
-
-        <View style={{ marginTop: 6 }}>
-          <AppText variant="muted">
-            Check a purchase against this household only.
-          </AppText>
-        </View>
-
-        <View style={{ marginTop: 16, gap: 12 }}>
-          <AppInput
-            placeholder="What are you buying?"
-            value={affordName}
-            onChangeText={setAffordName}
-          />
-
-          <AppInput
-            placeholder="$0"
-            value={affordAmount}
-            onChangeText={(text) =>
-              setAffordAmount(cleanAmount(text))
-            }
-            keyboardType="decimal-pad"
-          />
-        </View>
-      </AppCard>
-
-      <AppCard>
-        <AppText variant="muted">
-          {affordName.trim() || "Purchase"}
-        </AppText>
-
-        <View style={{ marginTop: 4 }}>
-          <AppText variant="title">
-            {formatMoney(purchaseAmount)}
-          </AppText>
-        </View>
-
-        <View style={{ marginTop: 14 }}>
-          <AppText variant="section">
-            {affordability.title}
-          </AppText>
-        </View>
-
-        <View style={{ marginTop: 6 }}>
-          <AppText variant="muted">
-            {affordability.message}
-          </AppText>
-        </View>
-      </AppCard>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="Available"
-            value={formatMoney(Math.max(available, 0))}
-            caption="Current funds"
-            tone={available < 0 ? "danger" : "success"}
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <MetricCard
-            title="After Purchase"
-            value={formatMoney(
-              available - purchaseAmount
-            )}
-            caption="Estimated"
-            tone={
-              available - purchaseAmount < 0
-                ? "danger"
-                : "primary"
-            }
-          />
-        </View>
-      </View>
-
-      {purchaseAmount > 0 &&
-      affordability.approved ? (
-        <AppButton
-          title="Add as Transaction"
-          onPress={onAddTransaction}
+                : "Kept separate",
+          }}
+          onAddTransaction={
+            onAddTransaction
+          }
+          onOpenBudget={() =>
+            setActiveTab("budget")
+          }
+          onOpenTransactions={() =>
+            setActiveTab("transactions")
+          }
+          onOpenCalendar={() =>
+            setActiveTab("calendar")
+          }
+          onOpenMembers={() =>
+            setActiveTab("members")
+          }
+          onOpenChat={() =>
+            setActiveTab("chat")
+          }
         />
-      ) : null}
-    </>
-  );
+      }
+      budget={
+        <HouseholdPlan
+          household={household}
+          transactions={transactions}
+          onEditBudget={onEditBudget}
+          onAddTransaction={
+            onAddTransaction
+          }
+          onEditTransaction={
+            onEditTransaction
+          }
+          onDeleteTransaction={
+            onDeleteTransaction
+          }
+        />
+      }
+      transactions={
+        <WorkspaceTransactions
+          workspaceLabel="Household"
+          transactions={transactions}
+          onAddTransaction={
+            onAddTransaction
+          }
+          onEditTransaction={
+            onEditTransaction
+          }
+          onDeleteTransaction={
+            onDeleteTransaction
+          }
+        />
+      }
+      afford={
+        <WorkspaceAfford
+          workspaceLabel="Household"
+          available={available}
+          plannedAvailable={
+            plannedAvailable
+          }
+          monthlyIncome={income}
+          monthlyAssigned={assigned}
+          monthlySpent={spent}
+          onAddTransaction={
+            onAddTransaction
+          }
+        />
+      }
+      calendar={
+        <WorkspaceCalendar
+          sourceType="household"
+          sourceId={household.id}
+          title="Household Calendar"
+          subtitle="Track shared bills, due dates, paydays, events, and reminders."
+          defaultEventType="household"
+        />
+      }
+      members={
+        <WorkspaceMembers
+          workspaceType="household"
+          workspace={household}
+        />
+      }
+      chat={
+        workspaceLoading ? (
+          <AppCard>
+            <AppText variant="muted">
+              Connecting household chat...
+            </AppText>
+          </AppCard>
+        ) : workspaceError ? (
+          <AppCard>
+            <AppText variant="section">
+              Chat could not be connected
+            </AppText>
 
-  const renderCalendar = () => (
-    <>
-      <AppCard>
-        <AppText variant="section">
-          Household Calendar
-        </AppText>
-
-        <View style={{ marginTop: 6 }}>
-          <AppText variant="muted">
-            Shared bills, due dates, household events, and
-            scheduled activity will appear here.
-          </AppText>
-        </View>
-      </AppCard>
-
-      <AppCard>
-        <EmptyState message="No household calendar events yet." />
-      </AppCard>
-    </>
-  );
-
- 
-
-  return (
-    <AppPage>
-      <AppButton
-        title="Back to Households"
-        onPress={onBack}
-        variant="outline"
-      />
-
-      <PageHeader
-        title={household.name}
-        subtitle={`${household.members} contributor${
-          household.members === 1 ? "" : "s"
-        }${
-          household.description
-            ? ` · ${household.description}`
-            : ""
-        }`}
-      />
-
-      {renderTabs()}
-
-      {activeTab === "today" && renderToday()}
-
-{activeTab === "plan" && (
-  <HouseholdPlan
-    household={household}
-    transactions={transactions}
-    onEditBudget={onEditBudget}
-    onAddTransaction={onAddTransaction}
-    onEditTransaction={onEditTransaction}
-    onDeleteTransaction={onDeleteTransaction}
-  />
-)}
-
-{activeTab === "afford" && renderAfford()}
-
-{activeTab === "calendar" && renderCalendar()}
-    </AppPage>
+            <View style={{ marginTop: 6 }}>
+              <AppText variant="muted">
+                {workspaceError}
+              </AppText>
+            </View>
+          </AppCard>
+        ) : sharedWorkspaceId ? (
+          <WorkspaceChat
+            workspaceId={
+              sharedWorkspaceId
+            }
+          />
+        ) : (
+          <AppCard>
+            <AppText variant="muted">
+              The shared household is not
+              available yet.
+            </AppText>
+          </AppCard>
+        )
+      }
+    />
   );
 }
