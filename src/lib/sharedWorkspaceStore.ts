@@ -1,11 +1,11 @@
 import {
-    getAppData,
-    updateAppData,
+  getAppData,
+  updateAppData,
 } from "./appStore";
 import { supabase } from "./supabase";
 import type {
-    Business,
-    Household,
+  Business,
+  Household,
 } from "./types";
 
 export type WorkspaceType =
@@ -46,9 +46,18 @@ export type WorkspaceMember = {
   workspace_id: string;
   user_id: string;
   role: WorkspaceRole;
+
+  display_name?: string | null;
+  planned_contribution?: number | null;
+  contributed_amount?: number | null;
+  savings_contribution?: number | null;
+  status?: string | null;
+  has_completed_setup?: boolean | null;
+
   created_at: string;
+  updated_at?: string | null;
+
   email?: string;
-  display_name?: string;
 };
 
 export type WorkspaceInvite = {
@@ -996,7 +1005,14 @@ export async function getWorkspaceMembers(
         workspace_id,
         user_id,
         role,
-        created_at
+        display_name,
+        planned_contribution,
+        contributed_amount,
+        savings_contribution,
+        status,
+        has_completed_setup,
+        created_at,
+        updated_at
       `)
       .eq(
         "workspace_id",
@@ -1011,8 +1027,7 @@ export async function getWorkspaceMembers(
   }
 
   const members =
-    (data ??
-      []) as WorkspaceMember[];
+    (data ?? []) as WorkspaceMember[];
 
   const userIds = members.map(
     (member) => member.user_id
@@ -1049,15 +1064,41 @@ export async function getWorkspaceMembers(
 
     return {
       ...member,
+
       email:
         member.user_id ===
         currentUser.id
           ? currentUser.email ??
             undefined
           : undefined,
+
       display_name:
-        profile?.display_name ??
-        undefined,
+        member.display_name?.trim() ||
+        profile?.display_name ||
+        null,
+
+      planned_contribution:
+        Number(
+          member.planned_contribution ??
+            0
+        ),
+
+      contributed_amount:
+        Number(
+          member.contributed_amount ??
+            0
+        ),
+
+      savings_contribution:
+        Number(
+          member.savings_contribution ??
+            0
+        ),
+
+      has_completed_setup:
+        Boolean(
+          member.has_completed_setup
+        ),
     };
   });
 }

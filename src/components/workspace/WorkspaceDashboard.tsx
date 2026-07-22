@@ -2,7 +2,7 @@ import AppButton from "@/components/ui/AppButton";
 import AppPage from "@/components/ui/AppPage";
 import PageHeader from "@/components/ui/PageHeader";
 import WorkspaceTabs, {
-    type WorkspaceTabOption,
+  type WorkspaceTabOption,
 } from "@/components/workspace/WorkspaceTabs";
 import type { ReactNode } from "react";
 
@@ -13,6 +13,7 @@ export type WorkspaceTab =
   | "afford"
   | "calendar"
   | "members"
+  | "activity"
   | "chat";
 
 type Props = {
@@ -22,7 +23,9 @@ type Props = {
   onBack: () => void;
 
   activeTab: WorkspaceTab;
-  onTabChange: (tab: WorkspaceTab) => void;
+  onTabChange: (
+    tab: WorkspaceTab
+  ) => void;
 
   overview: ReactNode;
   budget: ReactNode;
@@ -30,10 +33,15 @@ type Props = {
   afford: ReactNode;
   calendar: ReactNode;
   members: ReactNode;
-  chat: ReactNode;
+
+  activity?: ReactNode;
+  chat?: ReactNode;
 
   memberBadge?: number;
+  activityBadge?: number;
   chatBadge?: number;
+
+  activityLabel?: string;
 };
 
 export default function WorkspaceDashboard({
@@ -49,11 +57,30 @@ export default function WorkspaceDashboard({
   afford,
   calendar,
   members,
+  activity,
   chat,
   memberBadge = 0,
+  activityBadge,
   chatBadge = 0,
+  activityLabel = "Activity",
 }: Props) {
-  const tabs: WorkspaceTabOption<WorkspaceTab>[] = [
+  const collaborationContent =
+    activity ?? chat ?? null;
+
+  const collaborationBadge =
+    activityBadge ?? chatBadge;
+
+  const normalizedActiveTab: Exclude<
+    WorkspaceTab,
+    "chat"
+  > =
+    activeTab === "chat"
+      ? "activity"
+      : activeTab;
+
+  const tabs: WorkspaceTabOption<
+    Exclude<WorkspaceTab, "chat">
+  >[] = [
     {
       key: "overview",
       label: "Overview",
@@ -80,20 +107,32 @@ export default function WorkspaceDashboard({
       badge: memberBadge,
     },
     {
-      key: "chat",
-      label: "Chat",
-      badge: chatBadge,
+      key: "activity",
+      label: activityLabel,
+      badge: collaborationBadge,
     },
   ];
 
-  const contentByTab: Record<WorkspaceTab, ReactNode> = {
+  const contentByTab: Record<
+    Exclude<WorkspaceTab, "chat">,
+    ReactNode
+  > = {
     overview,
     budget,
     transactions,
     afford,
     calendar,
     members,
-    chat,
+    activity: collaborationContent,
+  };
+
+  const handleTabChange = (
+    tab: Exclude<
+      WorkspaceTab,
+      "chat"
+    >
+  ) => {
+    onTabChange(tab);
   };
 
   return (
@@ -111,11 +150,17 @@ export default function WorkspaceDashboard({
 
       <WorkspaceTabs
         tabs={tabs}
-        activeTab={activeTab}
-        onChange={onTabChange}
+        activeTab={
+          normalizedActiveTab
+        }
+        onChange={handleTabChange}
       />
 
-      {contentByTab[activeTab]}
+      {
+        contentByTab[
+          normalizedActiveTab
+        ]
+      }
     </AppPage>
   );
 }

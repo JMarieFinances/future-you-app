@@ -5,6 +5,10 @@ export type BudgetItem = {
   spent: number;
   dueDay?: number;
   notes?: string;
+
+  assignedMemberId?: string;
+  splitType?: HouseholdSplitType;
+  memberSplits?: HouseholdMemberSplit[];
 };
 
 export type PurchaseType = "income" | "expense";
@@ -17,6 +21,7 @@ export type BudgetType =
 export type Purchase = {
   id: string;
   name: string;
+  merchant?: string;
   amount: number;
   category: string;
   subcategory?: string;
@@ -25,6 +30,119 @@ export type Purchase = {
   type: PurchaseType;
   budgetType: BudgetType;
   budgetId?: string;
+
+  paidByMemberId?: string;
+  createdByUserId?: string;
+  createdByDisplayName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type HouseholdRole =
+  | "owner"
+  | "editor"
+  | "viewer";
+
+export type HouseholdMemberStatus =
+  | "pending"
+  | "active"
+  | "left"
+  | "removed";
+
+export type HouseholdSplitType =
+  | "equal"
+  | "single"
+  | "percentage"
+  | "custom";
+
+export type HouseholdActivityType =
+  | "household_created"
+  | "household_updated"
+  | "household_deleted"
+  | "transaction_created"
+  | "transaction_updated"
+  | "transaction_deleted"
+  | "contribution_created"
+  | "contribution_updated"
+  | "contribution_deleted"
+  | "budget_created"
+  | "budget_updated"
+  | "budget_deleted"
+  | "member_invited"
+  | "member_joined"
+  | "member_updated"
+  | "member_removed"
+  | "member_left"
+  | "ownership_transferred";
+
+export type HouseholdMemberSplit = {
+  memberId: string;
+  amount?: number;
+  percentage?: number;
+};
+
+export type HouseholdMember = {
+  id: string;
+  workspaceId?: string;
+  userId?: string;
+  email?: string;
+
+  accountName?: string;
+  displayName?: string;
+
+  role: HouseholdRole;
+  status: HouseholdMemberStatus;
+
+  plannedContribution: number;
+  contributedAmount: number;
+  savingsContribution: number;
+
+  joinedAt?: string;
+  invitedAt?: string;
+  updatedAt?: string;
+
+  hasCompletedSetup?: boolean;
+};
+
+export type HouseholdContribution = {
+  id: string;
+  householdId: string;
+  memberId: string;
+
+  amount: number;
+  contributionType: "household" | "savings";
+  date: string;
+  notes?: string;
+
+  createdByUserId?: string;
+  createdByDisplayName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type HouseholdActivity = {
+  id: string;
+  householdId: string;
+  workspaceId?: string;
+
+  userId?: string;
+  memberId?: string;
+  displayName: string;
+
+  type: HouseholdActivityType;
+  message: string;
+
+  transactionId?: string;
+  contributionId?: string;
+  budgetItemId?: string;
+  affectedMemberId?: string;
+
+  amount?: number;
+  previousAmount?: number;
+  merchant?: string;
+  category?: string;
+
+  createdAt: string;
 };
 
 export type HouseholdBudget = {
@@ -37,12 +155,26 @@ export type HouseholdBudget = {
 
 export type Household = {
   id: string;
+  workspaceId?: string;
+
   name: string;
   description: string;
+
   members: number;
+  memberList?: HouseholdMember[];
+
   budget: HouseholdBudget;
+  contributions?: HouseholdContribution[];
+  activity?: HouseholdActivity[];
+
   includedInPersonalPlan: boolean;
   personalContribution?: number;
+
+  createdByUserId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+
+  hasCompletedSetup?: boolean;
 };
 
 export type BusinessIncomeMode =
