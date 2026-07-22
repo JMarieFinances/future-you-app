@@ -147,44 +147,82 @@ export default function WorkspaceMembers({
     [invites]
   );
 
-  const handleCancelInvite = (
-    invite: WorkspaceInvite
-  ) => {
-    Alert.alert(
-      "Cancel invitation?",
-      `${invite.invite_email} will no longer be able to accept this invitation.`,
-      [
-        {
-          text: "Keep Invitation",
-          style: "cancel",
-        },
-        {
-          text: "Cancel Invitation",
-          style: "destructive",
-          onPress: async () => {
-            setProcessingId(invite.id);
+  const handleCancelInvite = async (
+  invite: WorkspaceInvite
+) => {
+  const message = `${invite.invite_email} will no longer be able to accept this invitation.`;
 
-            try {
-              await cancelWorkspaceInvite(
-                invite.id
-              );
+  const confirmed =
+    typeof window !== "undefined"
+      ? window.confirm(
+          `Cancel invitation?\n\n${message}`
+        )
+      : await new Promise<boolean>(
+          (resolve) => {
+            Alert.alert(
+              "Cancel invitation?",
+              message,
+              [
+                {
+                  text: "Keep Invitation",
+                  style: "cancel",
+                  onPress: () =>
+                    resolve(false),
+                },
+                {
+                  text: "Cancel Invitation",
+                  style: "destructive",
+                  onPress: () =>
+                    resolve(true),
+                },
+              ],
+              {
+                cancelable: true,
+                onDismiss: () =>
+                  resolve(false),
+              }
+            );
+          }
+        );
 
-              await loadWorkspace(false);
-            } catch (error) {
-              Alert.alert(
-                "Unable to cancel invitation",
-                error instanceof Error
-                  ? error.message
-                  : "Something went wrong."
-              );
-            } finally {
-              setProcessingId(null);
-            }
-          },
-        },
-      ]
+  if (!confirmed) {
+    return;
+  }
+
+  setProcessingId(invite.id);
+
+  try {
+    await cancelWorkspaceInvite(
+      invite.id
     );
-  };
+
+    setInvites((current) =>
+      current.filter(
+        (item) => item.id !== invite.id
+      )
+    );
+
+    await loadWorkspace(false);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong.";
+
+    if (typeof window !== "undefined") {
+      window.alert(
+        `Unable to cancel invitation\n\n${message}`
+      );
+    } else {
+      Alert.alert(
+        "Unable to cancel invitation",
+        message
+      );
+    }
+  } finally {
+    setProcessingId(null);
+  }
+};
 
   const handleRoleChange = (
     member: WorkspaceMember
@@ -234,46 +272,75 @@ export default function WorkspaceMembers({
     );
   };
 
-  const handleRemoveMember = (
-    member: WorkspaceMember
-  ) => {
-    Alert.alert(
-      "Remove member?",
-      `${getMemberLabel(
-        member
-      )} will lose access to this ${workspaceLabel.toLowerCase()}.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            setProcessingId(member.id);
+  const handleRemoveMember = async (
+  member: WorkspaceMember
+) => {
+  const memberLabel = getMemberLabel(member);
 
-            try {
-              await removeWorkspaceMember(
-                member.id
-              );
-
-              await loadWorkspace(false);
-            } catch (error) {
-              Alert.alert(
-                "Unable to remove member",
-                error instanceof Error
-                  ? error.message
-                  : "Something went wrong."
-              );
-            } finally {
-              setProcessingId(null);
+  const confirmed =
+    typeof window !== "undefined"
+      ? window.confirm(
+          `Remove member?\n\n${memberLabel} will lose access to this ${workspaceLabel.toLowerCase()}.`
+        )
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            "Remove member?",
+            `${memberLabel} will lose access to this ${workspaceLabel.toLowerCase()}.`,
+            [
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => resolve(false),
+              },
+              {
+                text: "Remove",
+                style: "destructive",
+                onPress: () => resolve(true),
+              },
+            ],
+            {
+              cancelable: true,
+              onDismiss: () => resolve(false),
             }
-          },
-        },
-      ]
+          );
+        });
+
+  if (!confirmed) {
+    return;
+  }
+
+  setProcessingId(member.id);
+
+  try {
+    await removeWorkspaceMember(member.id);
+
+    setMembers((current) =>
+      current.filter(
+        (item) => item.id !== member.id
+      )
     );
-  };
+
+    await loadWorkspace(false);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong.";
+
+    if (typeof window !== "undefined") {
+      window.alert(
+        `Unable to remove member\n\n${message}`
+      );
+    } else {
+      Alert.alert(
+        "Unable to remove member",
+        message
+      );
+    }
+  } finally {
+    setProcessingId(null);
+  }
+};
 
   if (loading) {
     return (

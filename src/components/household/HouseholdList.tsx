@@ -10,8 +10,7 @@ import AppText from "@/components/ui/AppText";
 import EmptyState from "@/components/ui/EmptyState";
 import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
-import { getHouseholds } from "@/lib/householdStore";
-import { Household } from "@/lib/types";
+import type { Household } from "@/lib/types";
 import { router } from "expo-router";
 import { Pressable, View } from "react-native";
 
@@ -20,15 +19,21 @@ const formatMoney = (amount: number) =>
     maximumFractionDigits: 0,
   })}`;
 
-export default function HouseholdList({
-  onCreate,
-  onOpen,
-}: {
+type Props = {
+  households: Household[];
+  loading?: boolean;
+  onRefresh?: () => void | Promise<void>;
   onCreate: () => void;
   onOpen: (household: Household) => void;
-}) {
-  const households = getHouseholds();
+};
 
+export default function HouseholdList({
+  households,
+  loading = false,
+  onRefresh,
+  onCreate,
+  onOpen,
+}: Props) {
   const totalIncome = households.reduce(
     (sum, household) =>
       sum + household.budget.householdIncome,
@@ -58,17 +63,19 @@ export default function HouseholdList({
   return (
     <AppPage>
       <AppButton
-  title="Back to Profile"
-  onPress={() => router.replace("/(tabs)/profile")}
-  variant="outline"
-/>
+        title="Back to Profile"
+        onPress={() =>
+          router.replace("/(tabs)/profile")
+        }
+        variant="outline"
+      />
 
       <PageHeader
         title="Households"
         subtitle="Manage shared income, bills, spending, and savings."
       />
 
-      <AppCard>
+      <AppCard glass>
         <AppRow>
           <View style={{ flex: 1 }}>
             <AppText variant="muted">
@@ -86,16 +93,35 @@ export default function HouseholdList({
             </AppText>
           </View>
 
-          <View style={{ marginLeft: 12 }}>
+          <View
+            style={{
+              marginLeft: 12,
+              gap: 8,
+            }}
+          >
             <AppButton
               title="Add Household"
               onPress={onCreate}
             />
+
+            {onRefresh ? (
+              <AppButton
+                title="Refresh"
+                variant="outline"
+                loading={loading}
+                onPress={onRefresh}
+              />
+            ) : null}
           </View>
         </AppRow>
       </AppCard>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Income"
@@ -119,7 +145,12 @@ export default function HouseholdList({
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Assigned"
@@ -133,7 +164,7 @@ export default function HouseholdList({
           <MetricCard
             title="Households"
             value={String(households.length)}
-            caption="Active budgets"
+            caption="Accessible budgets"
             tone="success"
           />
         </View>
@@ -146,14 +177,25 @@ export default function HouseholdList({
 
         <View style={{ marginTop: 4 }}>
           <AppText variant="muted">
-            Each household has its own budget, calendar,
-            transactions, and affordability tools.
+            Households you created and households shared
+            with your account appear here.
           </AppText>
         </View>
 
-        {households.length === 0 ? (
-          <View style={{ marginTop: 14, gap: 14 }}>
-            <EmptyState message="Create a household to manage shared income, bills, spending, and savings in one place." />
+        {loading && households.length === 0 ? (
+          <View style={{ marginTop: 14 }}>
+            <AppText variant="muted">
+              Loading households...
+            </AppText>
+          </View>
+        ) : households.length === 0 ? (
+          <View
+            style={{
+              marginTop: 14,
+              gap: 14,
+            }}
+          >
+            <EmptyState message="You do not have any household budgets yet." />
 
             <AppButton
               title="Set Up Your First Household"
@@ -161,10 +203,17 @@ export default function HouseholdList({
             />
           </View>
         ) : (
-          <View style={{ marginTop: 14, gap: 12 }}>
+          <View
+            style={{
+              marginTop: 14,
+              gap: 12,
+            }}
+          >
             {households.map((household) => {
               const assigned =
-                getBudgetTotal(household.budget.bills) +
+                getBudgetTotal(
+                  household.budget.bills
+                ) +
                 getBudgetTotal(
                   household.budget.spending
                 ) +
@@ -173,7 +222,9 @@ export default function HouseholdList({
                 );
 
               const spent =
-                getSpentTotal(household.budget.bills) +
+                getSpentTotal(
+                  household.budget.bills
+                ) +
                 getSpentTotal(
                   household.budget.spending
                 ) +
@@ -182,7 +233,8 @@ export default function HouseholdList({
                 );
 
               const remaining =
-                household.budget.householdIncome - spent;
+                household.budget.householdIncome -
+                spent;
 
               const unassigned =
                 household.budget.householdIncome -
@@ -191,7 +243,9 @@ export default function HouseholdList({
               return (
                 <Pressable
                   key={household.id}
-                  onPress={() => onOpen(household)}
+                  onPress={() =>
+                    onOpen(household)
+                  }
                   style={({ pressed }) => ({
                     opacity: pressed ? 0.75 : 1,
                   })}
@@ -227,7 +281,11 @@ export default function HouseholdList({
                     </AppRow>
 
                     {household.description ? (
-                      <View style={{ marginTop: 10 }}>
+                      <View
+                        style={{
+                          marginTop: 10,
+                        }}
+                      >
                         <AppText variant="muted">
                           {household.description}
                         </AppText>

@@ -62,6 +62,13 @@ export default function InvitationsScreen() {
           invite.workspace?.name ?? "the shared workspace"
         }.`
       );
+
+      if (invite.workspace?.type === "business") {
+  router.replace("/businesses");
+} else {
+  router.replace("/households");
+}
+
     } catch (error) {
       Alert.alert(
         "Unable to accept",
@@ -275,10 +282,7 @@ export default function InvitationsScreen() {
                     title="Accept Invitation"
                     loading={isProcessing}
                     disabled={processingId !== null}
-                    onPress={async () => {
-                      await handleAccept(invite);
-                      openAcceptedWorkspace(invite);
-                    }}
+                   onPress={() => handleAccept(invite)}
                   />
 
                   <AppButton

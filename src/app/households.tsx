@@ -2,11 +2,29 @@ import HouseholdDashboard from "@/components/household/HouseholdDashboard";
 import HouseholdList from "@/components/household/HouseholdList";
 import HouseholdSetup from "@/components/household/HouseholdSetup";
 import NewHouseholdTransaction from "@/components/household/NewHouseholdTransaction";
+import AppPage from "@/components/ui/AppPage";
+import AppText from "@/components/ui/AppText";
 import { loadAppData } from "@/lib/appStore";
-import { getHouseholds } from "@/lib/householdStore";
+import {
+  getHouseholds,
+  loadHouseholds,
+} from "@/lib/householdStore";
 import { deletePurchase } from "@/lib/purchaseStore";
-import { Household, Purchase } from "@/lib/types";
-import { useEffect, useState } from "react";
+import {
+  getSharedWorkspaces,
+  refreshSharedWorkspacesIntoAppData,
+} from "@/lib/sharedWorkspaceStore";
+import type {
+  Household,
+  Purchase,
+} from "@/lib/types";
+import {
+  useFocusEffect
+} from "expo-router";
+import {
+  useCallback,
+  useState,
+} from "react";
 
 type ViewMode =
   | "list"
@@ -15,58 +33,145 @@ type ViewMode =
   | "transaction";
 
 export default function HouseholdsScreen() {
-  const [selectedHousehold, setSelectedHousehold] =
-    useState<Household | null>(null);
+  const [households, setHouseholds] =
+    useState<Household[]>([]);
 
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Purchase | null>(null);
+  const [
+    selectedHousehold,
+    setSelectedHousehold,
+  ] = useState<Household | null>(null);
+
+  const [
+    selectedTransaction,
+    setSelectedTransaction,
+  ] = useState<Purchase | null>(null);
 
   const [viewMode, setViewMode] =
     useState<ViewMode>("list");
 
-  const [, forceUpdate] = useState(0);
+  const [loading, setLoading] =
+    useState(true);
 
-  useEffect(() => {
-    const loadData = async () => {
-      await loadAppData();
-      forceUpdate((previous) => previous + 1);
+  const refreshHouseholds =
+    useCallback(async () => {
+      setLoading(true);
+
+      try {
+        await loadAppData();
+
+        const sharedWorkspaces =
+          await getSharedWorkspaces(
+            "household"
+          );
+
+        console.log(
+          "Accessible shared households:",
+          sharedWorkspaces.map(
+            (workspace) => ({
+              id: workspace.id,
+              name: workspace.name,
+              role:
+                workspace.current_user_role,
+              localId:
+                workspace.local_workspace_id,
+            })
+          )
+        );
+
+        await refreshSharedWorkspacesIntoAppData();
+
+        const loadedHouseholds =
+          await loadHouseholds();
+
+        setHouseholds([
+          ...loadedHouseholds,
+        ]);
+
+        if (selectedHousehold) {
+          const refreshed =
+            loadedHouseholds.find(
+              (household) =>
+                household.id ===
+                selectedHousehold.id
+            );
+
+          if (refreshed) {
+            setSelectedHousehold(
+              refreshed
+            );
+          }
+        }
+      } catch (error) {
+        console.log(
+          "Unable to refresh households:",
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [selectedHousehold?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshHouseholds();
+    }, [refreshHouseholds])
+  );
+
+  const refreshSelectedHousehold =
+    async (householdId: string) => {
+      await refreshHouseholds();
+
+      const updated =
+        getHouseholds().find(
+          (household) =>
+            household.id === householdId
+        );
+
+      if (updated) {
+        setSelectedHousehold(updated);
+      }
     };
 
-    loadData();
-  }, []);
-
-  const refreshSelectedHousehold = async (
-    householdId: string
-  ) => {
-    await loadAppData();
-
-    const updatedHousehold = getHouseholds().find(
-      (household) => household.id === householdId
+  if (
+    loading &&
+    viewMode === "list" &&
+    households.length === 0
+  ) {
+    return (
+      <AppPage>
+        <AppText variant="muted">
+          Loading households...
+        </AppText>
+      </AppPage>
     );
-
-    if (updatedHousehold) {
-      setSelectedHousehold(updatedHousehold);
-    }
-
-    forceUpdate((previous) => previous + 1);
-  };
+  }
 
   if (viewMode === "setup") {
     return (
       <HouseholdSetup
-        household={selectedHousehold ?? undefined}
+        household={
+          selectedHousehold ?? undefined
+        }
         onBack={() => {
-          if (selectedHousehold) {
-            setViewMode("dashboard");
-          } else {
-            setViewMode("list");
-          }
+          setViewMode(
+            selectedHousehold
+              ? "dashboard"
+              : "list"
+          );
         }}
-        onSave={(savedHousehold) => {
-          setSelectedHousehold(savedHousehold);
+        onSave={async (
+          savedHousehold
+        ) => {
+          setSelectedHousehold(
+            savedHousehold
+          );
+
           setSelectedTransaction(null);
           setViewMode("dashboard");
-          forceUpdate((previous) => previous + 1);
+
+          await refreshSelectedHousehold(
+            savedHousehold.id
+          );
         }}
       />
     );
@@ -79,11 +184,12 @@ export default function HouseholdsScreen() {
     return (
       <HouseholdDashboard
         household={selectedHousehold}
-        onBack={() => {
+        onBack={async () => {
           setSelectedHousehold(null);
           setSelectedTransaction(null);
           setViewMode("list");
-          forceUpdate((previous) => previous + 1);
+
+          await refreshHouseholds();
         }}
         onEditBudget={() => {
           setViewMode("setup");
@@ -92,12 +198,22 @@ export default function HouseholdsScreen() {
           setSelectedTransaction(null);
           setViewMode("transaction");
         }}
-        onEditTransaction={(transaction) => {
-          setSelectedTransaction(transaction);
+        onEditTransaction={(
+          transaction
+        ) => {
+          setSelectedTransaction(
+            transaction
+          );
+
           setViewMode("transaction");
         }}
-        onDeleteTransaction={async (id) => {
-          await deletePurchase(id);
+        onDeleteTransaction={async (
+          transactionId
+        ) => {
+          await deletePurchase(
+            transactionId
+          );
+
           await refreshSelectedHousehold(
             selectedHousehold.id
           );
@@ -113,14 +229,17 @@ export default function HouseholdsScreen() {
     return (
       <NewHouseholdTransaction
         household={selectedHousehold}
-        transaction={selectedTransaction}
+        transaction={
+          selectedTransaction
+        }
         onBack={() => {
           setSelectedTransaction(null);
           setViewMode("dashboard");
         }}
-        onSave={async (updatedHousehold) => {
+        onSave={async (
+          updatedHousehold
+        ) => {
           setSelectedTransaction(null);
-          setSelectedHousehold(updatedHousehold);
 
           await refreshSelectedHousehold(
             updatedHousehold.id
@@ -134,13 +253,21 @@ export default function HouseholdsScreen() {
 
   return (
     <HouseholdList
+      households={households}
+      loading={loading}
+      onRefresh={
+        refreshHouseholds
+      }
       onCreate={() => {
         setSelectedHousehold(null);
         setSelectedTransaction(null);
         setViewMode("setup");
       }}
       onOpen={(household) => {
-        setSelectedHousehold(household);
+        setSelectedHousehold(
+          household
+        );
+
         setSelectedTransaction(null);
         setViewMode("dashboard");
       }}
