@@ -1,17 +1,72 @@
+export type CalendarEventRepeat =
+  | "never"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "yearly";
+
+export type CalendarEventType =
+  | "payday"
+  | "bill"
+  | "goal"
+  | "business"
+  | "household"
+  | "review"
+  | "custom";
+
+export type CalendarEventSourceType =
+  | "personal"
+  | "household"
+  | "business"
+  | "goal"
+  | "system";
+
+export type WorkspaceRole =
+  | "owner"
+  | "editor"
+  | "viewer";
+
+export type WorkspaceMemberStatus =
+  | "pending"
+  | "active"
+  | "left"
+  | "removed";
+
+export type HouseholdSplitType =
+  | "equal"
+  | "single"
+  | "percentage"
+  | "custom";
+
+export type HouseholdMemberSplit = {
+  memberId: string;
+  amount?: number;
+  percentage?: number;
+  isResponsible?: boolean;
+};
+
 export type BudgetItem = {
   id: string;
   name: string;
   budget: number;
   spent: number;
+
   dueDay?: number;
   notes?: string;
+
+  frequency?: CalendarEventRepeat;
+  reminderDaysBefore?: number;
+  responsibilityNotes?: string;
+  required?: boolean;
 
   assignedMemberId?: string;
   splitType?: HouseholdSplitType;
   memberSplits?: HouseholdMemberSplit[];
 };
 
-export type PurchaseType = "income" | "expense";
+export type PurchaseType =
+  | "income"
+  | "expense";
 
 export type BudgetType =
   | "personal"
@@ -27,33 +82,25 @@ export type Purchase = {
   subcategory?: string;
   date: string;
   notes?: string;
+
   type: PurchaseType;
   budgetType: BudgetType;
   budgetId?: string;
 
   paidByMemberId?: string;
+
   createdByUserId?: string;
   createdByDisplayName?: string;
+
   createdAt?: string;
   updatedAt?: string;
 };
 
 export type HouseholdRole =
-  | "owner"
-  | "editor"
-  | "viewer";
+  WorkspaceRole;
 
 export type HouseholdMemberStatus =
-  | "pending"
-  | "active"
-  | "left"
-  | "removed";
-
-export type HouseholdSplitType =
-  | "equal"
-  | "single"
-  | "percentage"
-  | "custom";
+  WorkspaceMemberStatus;
 
 export type HouseholdActivityType =
   | "household_created"
@@ -74,12 +121,6 @@ export type HouseholdActivityType =
   | "member_removed"
   | "member_left"
   | "ownership_transferred";
-
-export type HouseholdMemberSplit = {
-  memberId: string;
-  amount?: number;
-  percentage?: number;
-};
 
 export type HouseholdMember = {
   id: string;
@@ -110,12 +151,17 @@ export type HouseholdContribution = {
   memberId: string;
 
   amount: number;
-  contributionType: "household" | "savings";
+
+  contributionType:
+    | "household"
+    | "savings";
+
   date: string;
   notes?: string;
 
   createdByUserId?: string;
   createdByDisplayName?: string;
+
   createdAt?: string;
   updatedAt?: string;
 };
@@ -164,6 +210,7 @@ export type Household = {
   memberList?: HouseholdMember[];
 
   budget: HouseholdBudget;
+
   contributions?: HouseholdContribution[];
   activity?: HouseholdActivity[];
 
@@ -182,6 +229,84 @@ export type BusinessIncomeMode =
   | "combined"
   | "separate";
 
+export type BusinessMemberRole =
+  WorkspaceRole;
+
+export type BusinessMemberStatus =
+  WorkspaceMemberStatus;
+
+export type BusinessMember = {
+  id: string;
+  workspaceId?: string;
+  userId?: string;
+  email?: string;
+
+  accountName?: string;
+  displayName?: string;
+
+  role: BusinessMemberRole;
+  status: BusinessMemberStatus;
+
+  jobTitle?: string;
+  department?: string;
+
+  plannedContribution: number;
+  contributedAmount: number;
+  savingsContribution: number;
+
+  managedBudget?: number;
+
+  joinedAt?: string;
+  invitedAt?: string;
+  updatedAt?: string;
+
+  hasCompletedSetup?: boolean;
+};
+
+export type BusinessActivityType =
+  | "business_created"
+  | "business_updated"
+  | "business_deleted"
+  | "transaction_created"
+  | "transaction_updated"
+  | "transaction_deleted"
+  | "revenue_created"
+  | "revenue_updated"
+  | "revenue_deleted"
+  | "budget_created"
+  | "budget_updated"
+  | "budget_deleted"
+  | "member_invited"
+  | "member_joined"
+  | "member_updated"
+  | "member_removed"
+  | "member_left"
+  | "ownership_transferred";
+
+export type BusinessActivity = {
+  id: string;
+  businessId: string;
+  workspaceId?: string;
+
+  userId?: string;
+  memberId?: string;
+  displayName: string;
+
+  type: BusinessActivityType;
+  message: string;
+
+  transactionId?: string;
+  budgetItemId?: string;
+  affectedMemberId?: string;
+
+  amount?: number;
+  previousAmount?: number;
+  merchant?: string;
+  category?: string;
+
+  createdAt: string;
+};
+
 export type BusinessBudget = {
   businessIncome: number;
   revenueSources: BudgetItem[];
@@ -192,12 +317,26 @@ export type BusinessBudget = {
 
 export type Business = {
   id: string;
+  workspaceId?: string;
+
   name: string;
   description: string;
   businessType: string;
+
   incomeMode: BusinessIncomeMode;
   ownerPay: number;
+
+  members?: number;
+  memberList?: BusinessMember[];
+
   budget: BusinessBudget;
+  activity?: BusinessActivity[];
+
+  createdByUserId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+
+  hasCompletedSetup?: boolean;
 };
 
 export type NotificationSettings = {
@@ -232,11 +371,14 @@ export type Goal = {
   id: string;
   emoji: string;
   name: string;
+
   target: number;
   current: number;
   monthly: number;
+
   collectionId?: string | null;
   milestones?: GoalMilestone[];
+
   notes?: string;
   archived?: boolean;
 };
@@ -249,42 +391,46 @@ export type PlanData = {
   safeToSpend: number;
   goalContributions: number;
 
-  incomeDetails: Record<string, number>;
-  obligationDetails: Record<string, number>;
-  debtDetails: Record<string, number>;
-  lifestyleDetails: Record<string, number>;
+  incomeDetails: Record<
+    string,
+    number
+  >;
+
+  obligationDetails: Record<
+    string,
+    number
+  >;
+
+  debtDetails: Record<
+    string,
+    number
+  >;
+
+  lifestyleDetails: Record<
+    string,
+    number
+  >;
 
   subscriptions: number;
-  subscriptionDetails: Record<string, number>;
-  subscriptionDueDates?: Record<string, number>;
-  obligationDueDates?: Record<string, number>;
+
+  subscriptionDetails: Record<
+    string,
+    number
+  >;
+
+  subscriptionDueDates?: Record<
+    string,
+    number
+  >;
+
+  obligationDueDates?: Record<
+    string,
+    number
+  >;
 
   goals: Goal[];
   goalCollections?: GoalCollection[];
 };
-
-export type CalendarEventRepeat =
-  | "never"
-  | "weekly"
-  | "biweekly"
-  | "monthly"
-  | "yearly";
-
-export type CalendarEventType =
-  | "payday"
-  | "bill"
-  | "goal"
-  | "business"
-  | "household"
-  | "review"
-  | "custom";
-
-export type CalendarEventSourceType =
-  | "personal"
-  | "household"
-  | "business"
-  | "goal"
-  | "system";
 
 export type CalendarEvent = {
   id: string;
@@ -302,6 +448,17 @@ export type CalendarEvent = {
 
   sourceId?: string;
   sourceType?: CalendarEventSourceType;
+
+  budgetItemId?: string;
+
+  assignedMemberId?: string;
+  assignedMemberName?: string;
+
+  householdMemberId?: string;
+  businessMemberId?: string;
+
+  reminderDaysBefore?: number;
+  required?: boolean;
 
   completed?: boolean;
   createdAt?: string;
@@ -344,8 +501,11 @@ export type AppSettings = {
 export type AppData = {
   personalPlan: PlanData;
   purchases: Purchase[];
+
   households: Household[];
   businesses: Business[];
+
   calendarEvents?: CalendarEvent[];
+
   settings: AppSettings;
 };

@@ -72,7 +72,7 @@ type HouseholdActivityRow = {
   workspace_id: string;
   user_id: string | null;
   member_id?: string | null;
-  activity_type?: string | null;
+  type?: string | null;
   type?: string | null;
   title: string;
   description: string | null;
@@ -127,7 +127,7 @@ const getActivityLabel = (
   activity: HouseholdActivityRow
 ) => {
   const type =
-    activity.activity_type ??
+    activity.type ??
     activity.type ??
     "";
 
@@ -397,7 +397,7 @@ export default function HouseholdDashboard({
                 workspace_id,
                 user_id,
                 member_id,
-                activity_type,
+                type,
                 type,
                 title,
                 description,
