@@ -5,6 +5,7 @@ import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
 import EmptyState from "@/components/ui/EmptyState";
 import InviteMemberModal from "@/components/workspace/InviteMemberModal";
+import WorkspaceDangerZone from "@/components/workspace/WorkspaceDangerZone";
 import {
   cancelWorkspaceInvite,
   getOrCreateSharedWorkspace,
@@ -1732,6 +1733,19 @@ export default function WorkspaceMembers({
           </View>
         </AppCard>
       ) : null}
+
+      {sharedWorkspace ? (
+  <WorkspaceDangerZone
+    workspaceType={workspaceType}
+    sharedWorkspace={sharedWorkspace}
+    isOwner={isOwner}
+    onWorkspaceExit={() => {
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    }}
+  />
+) : null}
 
       <InviteMemberModal
         visible={inviteModalOpen}

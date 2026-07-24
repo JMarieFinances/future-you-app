@@ -1,77 +1,329 @@
+import AppButton from "@/components/ui/AppButton";
 import AppCard from "@/components/ui/AppCard";
+import AppInput from "@/components/ui/AppInput";
 import AppPage from "@/components/ui/AppPage";
 import AppRow from "@/components/ui/AppRow";
 import AppText from "@/components/ui/AppText";
 import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
-import { getAppData } from "@/lib/appStore";
+import {
+  getAppData,
+  updateAppData,
+} from "@/lib/appStore";
 import { getFinancialSummary } from "@/lib/financeEngine";
 import { getThemeConfig } from "@/lib/settingsStore";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  Alert,
+  Pressable,
+  View,
+} from "react-native";
 
 export default function ProfileTab() {
   const app = getAppData();
   const summary = getFinancialSummary();
   const theme = getThemeConfig();
 
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminCheckComplete, setAdminCheckComplete] =
+  const [isAdmin, setIsAdmin] =
     useState(false);
 
+  const [
+    adminCheckComplete,
+    setAdminCheckComplete,
+  ] = useState(false);
+
+  const [userId, setUserId] =
+    useState("");
+
+  const [
+    displayName,
+    setDisplayName,
+  ] = useState("");
+
+  const [
+    savedDisplayName,
+    setSavedDisplayName,
+  ] = useState(
+    app.settings.userName ?? ""
+  );
+
+  const [
+    profileLoading,
+    setProfileLoading,
+  ] = useState(true);
+
+  const [
+    profileSaving,
+    setProfileSaving,
+  ] = useState(false);
+
+  const [
+    isEditingProfile,
+    setIsEditingProfile,
+  ] = useState(false);
+
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+    loadProfile();
+    checkAdminAccess();
+  }, []);
 
-        if (!user) {
-          setIsAdmin(false);
-          return;
-        }
+  async function loadProfile() {
+    setProfileLoading(true);
 
-        const { data, error } = await supabase
-          .from("admin_users")
-          .select("user_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } =
+        await supabase.auth.getUser();
 
-        if (error) {
-          console.error(
-            "Unable to verify admin access:",
-            error
-          );
+      if (userError) {
+        throw new Error(
+          userError.message
+        );
+      }
 
-          setIsAdmin(false);
-          return;
-        }
+      if (!user) {
+        setUserId("");
+        return;
+      }
 
-        setIsAdmin(Boolean(data));
-      } catch (error) {
+      setUserId(user.id);
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("user_profiles")
+        .select("display_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        throw new Error(
+          profileError.message
+        );
+      }
+
+      const nextDisplayName =
+        profile?.display_name?.trim() ||
+        app.settings.userName?.trim() ||
+        "";
+
+      setSavedDisplayName(
+        nextDisplayName
+      );
+
+      setDisplayName(
+        nextDisplayName
+      );
+
+      if (
+        nextDisplayName &&
+        nextDisplayName !==
+          app.settings.userName
+      ) {
+        await updateAppData(
+          (currentApp) => {
+            currentApp.settings.userName =
+              nextDisplayName;
+          }
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "Unable to load profile",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong."
+      );
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  async function checkAdminAccess() {
+    try {
+      const {
+        data: { user },
+      } =
+        await supabase.auth.getUser();
+
+      if (!user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("admin_users")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
         console.error(
-          "Admin access check failed:",
+          "Unable to verify admin access:",
           error
         );
 
         setIsAdmin(false);
-      } finally {
-        setAdminCheckComplete(true);
+        return;
       }
-    };
 
-    checkAdminAccess();
-  }, []);
+      setIsAdmin(Boolean(data));
+    } catch (error) {
+      console.error(
+        "Admin access check failed:",
+        error
+      );
+
+      setIsAdmin(false);
+    } finally {
+      setAdminCheckComplete(true);
+    }
+  }
+
+  function beginEditingProfile() {
+    setDisplayName(
+      savedDisplayName
+    );
+
+    setIsEditingProfile(true);
+  }
+
+  function cancelEditingProfile() {
+    setDisplayName(
+      savedDisplayName
+    );
+
+    setIsEditingProfile(false);
+  }
+
+  async function saveProfile() {
+    const cleanDisplayName =
+      displayName.trim();
+
+    if (!userId) {
+      Alert.alert(
+        "Unable to save",
+        "You must be signed in to update your profile."
+      );
+
+      return;
+    }
+
+    if (!cleanDisplayName) {
+      Alert.alert(
+        "Display name required",
+        "Enter the name you want shown in Future You."
+      );
+
+      return;
+    }
+
+    if (
+      cleanDisplayName.length > 50
+    ) {
+      Alert.alert(
+        "Name too long",
+        "Display name must be 50 characters or fewer."
+      );
+
+      return;
+    }
+
+    setProfileSaving(true);
+
+    try {
+      const {
+        error: profileError,
+      } = await supabase
+        .from("user_profiles")
+        .upsert(
+          {
+            user_id: userId,
+            display_name:
+              cleanDisplayName,
+            updated_at:
+              new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id",
+          }
+        );
+
+      if (profileError) {
+        throw new Error(
+          profileError.message
+        );
+      }
+
+      const {
+        error: metadataError,
+      } =
+        await supabase.auth.updateUser(
+          {
+            data: {
+              display_name:
+                cleanDisplayName,
+            },
+          }
+        );
+
+      if (metadataError) {
+        throw new Error(
+          metadataError.message
+        );
+      }
+
+      await updateAppData(
+        (currentApp) => {
+          currentApp.settings.userName =
+            cleanDisplayName;
+        }
+      );
+
+      setSavedDisplayName(
+        cleanDisplayName
+      );
+
+      setDisplayName(
+        cleanDisplayName
+      );
+
+      setIsEditingProfile(false);
+
+      Alert.alert(
+        "Profile updated",
+        "Your display name has been saved."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Unable to update profile",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong."
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   return (
     <AppPage>
       <PageHeader
         title="Profile"
         subtitle={`Welcome back${
-          app.settings.userName
-            ? `, ${app.settings.userName}`
+          savedDisplayName
+            ? `, ${savedDisplayName}`
             : ""
         }.`}
       />
@@ -81,22 +333,132 @@ export default function ProfileTab() {
           Account Hub
         </AppText>
 
-        <View style={{ marginTop: 4 }}>
+        <View
+          style={{ marginTop: 4 }}
+        >
           <AppText variant="title">
-            {theme.emoji} {theme.name}
+            {theme.name}
           </AppText>
         </View>
 
         <AppText variant="muted">
-          Manage your budgets, workspace, and reminders.
+          Manage your account,
+          budgets, workspaces, and
+          reminders.
         </AppText>
       </AppCard>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <AppCard>
+        <View style={{ gap: 14 }}>
+          <View>
+            <AppText variant="section">
+              Profile Details
+            </AppText>
+
+            <AppText variant="muted">
+              This name appears in
+              households, businesses,
+              responsibilities, and
+              the admin dashboard.
+            </AppText>
+          </View>
+
+          {profileLoading ? (
+            <AppText variant="muted">
+              Loading profile...
+            </AppText>
+          ) : isEditingProfile ? (
+            <View style={{ gap: 12 }}>
+              <AppInput
+                label="Display Name"
+                placeholder="Enter your display name"
+                value={displayName}
+                onChangeText={
+                  setDisplayName
+                }
+                autoCapitalize="words"
+                editable={
+                  !profileSaving
+                }
+              />
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 10,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title="Save Changes"
+                    loading={
+                      profileSaving
+                    }
+                    disabled={
+                      profileSaving ||
+                      !displayName.trim()
+                    }
+                    onPress={saveProfile}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <AppButton
+                    title="Cancel"
+                    variant="outline"
+                    disabled={
+                      profileSaving
+                    }
+                    onPress={
+                      cancelEditingProfile
+                    }
+                  />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={{ gap: 12 }}>
+              <View>
+                <AppText variant="muted">
+                  Display Name
+                </AppText>
+
+                <View
+                  style={{
+                    marginTop: 4,
+                  }}
+                >
+                  <AppText variant="title">
+                    {savedDisplayName ||
+                      "No display name set"}
+                  </AppText>
+                </View>
+              </View>
+
+              <AppButton
+                title="Edit Display Name"
+                variant="outline"
+                onPress={
+                  beginEditingProfile
+                }
+              />
+            </View>
+          )}
+        </View>
+      </AppCard>
+
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Income"
-            value={`$${summary.totalIncome.toFixed(0)}`}
+            value={`$${summary.totalIncome.toFixed(
+              0
+            )}`}
             caption="Monthly"
             tone="success"
           />
@@ -105,7 +467,9 @@ export default function ProfileTab() {
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Safe"
-            value={`$${summary.safeToSpend.toFixed(0)}`}
+            value={`$${summary.safeToSpend.toFixed(
+              0
+            )}`}
             caption="To spend"
             tone={
               summary.safeToSpend < 0
@@ -116,7 +480,12 @@ export default function ProfileTab() {
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
           <MetricCard
             title="Goals"
@@ -130,9 +499,12 @@ export default function ProfileTab() {
           <MetricCard
             title="Score"
             value={`${summary.budgetScore.score}`}
-            caption={summary.budgetScore.label}
+            caption={
+              summary.budgetScore.label
+            }
             tone={
-              summary.budgetScore.score >= 80
+              summary.budgetScore
+                .score >= 80
                 ? "success"
                 : "warning"
             }
@@ -140,13 +512,16 @@ export default function ProfileTab() {
         </View>
       </View>
 
-      {adminCheckComplete && isAdmin ? (
+      {adminCheckComplete &&
+      isAdmin ? (
         <AppCard>
           <AppText variant="section">
             Administration
           </AppText>
 
-          <View style={{ marginTop: 12 }}>
+          <View
+            style={{ marginTop: 12 }}
+          >
             <MenuButton
               title="Admin Dashboard"
               subtitle="Manage users, subscriptions, support requests, and app activity."
@@ -249,12 +624,18 @@ function MenuButton({
 }) {
   return (
     <Pressable
-      onPress={() => router.push(route as never)}
+      onPress={() =>
+        router.push(route as never)
+      }
       style={({ pressed }) => ({
-        opacity: pressed ? 0.72 : 1,
+        opacity: pressed
+          ? 0.72
+          : 1,
         transform: [
           {
-            scale: pressed ? 0.99 : 1,
+            scale: pressed
+              ? 0.99
+              : 1,
           },
         ],
       })}
@@ -271,7 +652,9 @@ function MenuButton({
             </AppText>
           </View>
 
-          <AppText variant="bold">›</AppText>
+          <AppText variant="bold">
+            ›
+          </AppText>
         </AppRow>
       </AppCard>
     </Pressable>

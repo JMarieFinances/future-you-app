@@ -8,10 +8,15 @@ import MetricCard from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import {
+  Alert,
+  Pressable,
+  View,
+} from "react-native";
 
 type SubscriptionRow = {
   user_id: string;
+  display_name?: string | null;
   status: string;
   plan: string;
   stripe_customer_id: string | null;
@@ -22,6 +27,11 @@ type SubscriptionRow = {
   updated_at: string;
 };
 
+type UserProfileRow = {
+  user_id: string;
+  display_name: string | null;
+};
+
 type SupportRequest = {
   id: string;
   user_id: string;
@@ -30,19 +40,46 @@ type SupportRequest = {
   issue_type?: string;
   subject: string;
   message: string;
-  status: "open" | "in_progress" | "closed";
+  status:
+    | "open"
+    | "in_progress"
+    | "closed";
   admin_response?: string | null;
   created_at: string;
 };
 
 export default function AdminScreen() {
-  const [loading, setLoading] = useState(true);
-  const [allowed, setAllowed] = useState(false);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
-  const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
-  const [selectedRequest, setSelectedRequest] = useState<SupportRequest | null>(null);
-  const [adminResponse, setAdminResponse] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [allowed, setAllowed] =
+    useState(false);
+
+  const [
+    subscriptions,
+    setSubscriptions,
+  ] = useState<SubscriptionRow[]>([]);
+
+  const [
+    supportRequests,
+    setSupportRequests,
+  ] = useState<SupportRequest[]>([]);
+
+  const [
+    selectedRequest,
+    setSelectedRequest,
+  ] =
+    useState<SupportRequest | null>(
+      null
+    );
+
+  const [
+    adminResponse,
+    setAdminResponse,
+  ] = useState("");
+
+  const [filter, setFilter] =
+    useState("all");
 
   useEffect(() => {
     loadAdminData();
@@ -51,76 +88,216 @@ export default function AdminScreen() {
   async function loadAdminData() {
     setLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
+    try {
+      const {
+        data: userData,
+        error: userError,
+      } =
+        await supabase.auth.getUser();
 
-    if (!user) {
-      setAllowed(false);
+      if (userError) {
+        throw new Error(
+          userError.message
+        );
+      }
+
+      const user = userData.user;
+
+      if (!user) {
+        setAllowed(false);
+        return;
+      }
+
+      const {
+        data: adminRow,
+        error: adminError,
+      } = await supabase
+        .from("admin_users")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (adminError) {
+        throw new Error(
+          adminError.message
+        );
+      }
+
+      if (!adminRow) {
+        setAllowed(false);
+        return;
+      }
+
+      setAllowed(true);
+
+      const [
+        subscriptionResult,
+        supportResult,
+      ] = await Promise.all([
+        supabase
+          .from("user_subscriptions")
+          .select("*")
+          .order("updated_at", {
+            ascending: false,
+          }),
+
+        supabase
+          .from("support_requests")
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          }),
+      ]);
+
+      if (
+        subscriptionResult.error
+      ) {
+        throw new Error(
+          subscriptionResult.error.message
+        );
+      }
+
+      if (supportResult.error) {
+        throw new Error(
+          supportResult.error.message
+        );
+      }
+
+      const subscriptionRows =
+        (subscriptionResult.data ??
+          []) as SubscriptionRow[];
+
+      const userIds = [
+        ...new Set(
+          subscriptionRows.map(
+            (item) => item.user_id
+          )
+        ),
+      ];
+
+      let profiles: UserProfileRow[] =
+        [];
+
+      if (userIds.length > 0) {
+        const {
+          data: profileData,
+          error: profileError,
+        } = await supabase
+          .from("user_profiles")
+          .select(
+            "user_id, display_name"
+          )
+          .in("user_id", userIds);
+
+        if (profileError) {
+          throw new Error(
+            profileError.message
+          );
+        }
+
+        profiles =
+          (profileData ??
+            []) as UserProfileRow[];
+      }
+
+      const profileMap = new Map(
+        profiles.map((profile) => [
+          profile.user_id,
+          profile,
+        ])
+      );
+
+      const mergedSubscriptions =
+        subscriptionRows.map(
+          (subscription) => {
+            const profile =
+              profileMap.get(
+                subscription.user_id
+              );
+
+            return {
+              ...subscription,
+              display_name:
+                profile?.display_name?.trim() ||
+                null,
+            };
+          }
+        );
+
+      setSubscriptions(
+        mergedSubscriptions
+      );
+
+      setSupportRequests(
+        (supportResult.data ??
+          []) as SupportRequest[]
+      );
+    } catch (error) {
+      Alert.alert(
+        "Admin dashboard error",
+        error instanceof Error
+          ? error.message
+          : "The admin dashboard could not be loaded."
+      );
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: adminRow } = await supabase
-      .from("admin_users")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!adminRow) {
-      setAllowed(false);
-      setLoading(false);
-      return;
-    }
-
-    setAllowed(true);
-
-    const { data: subData } = await supabase
-      .from("user_subscriptions")
-      .select("*")
-      .order("updated_at", { ascending: false });
-
-    const { data: requestsData, error: requestsError } = await supabase
-      .from("support_requests")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (requestsError) {
-      Alert.alert("Support error", requestsError.message);
-    }
-
-    setSubscriptions((subData ?? []) as SubscriptionRow[]);
-    setSupportRequests((requestsData ?? []) as SupportRequest[]);
-    setLoading(false);
   }
 
-  async function updateSupportStatus(status: "open" | "in_progress" | "closed") {
-    if (!selectedRequest) return;
+  async function updateSupportStatus(
+    status:
+      | "open"
+      | "in_progress"
+      | "closed"
+  ) {
+    if (!selectedRequest) {
+      return;
+    }
 
     const { error } = await supabase
       .from("support_requests")
       .update({
         status,
-        admin_response: adminResponse,
-        responded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        admin_response:
+          adminResponse.trim() ||
+          null,
+        responded_at:
+          new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
-      .eq("id", selectedRequest.id);
+      .eq(
+        "id",
+        selectedRequest.id
+      );
 
     if (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert(
+        "Error",
+        error.message
+      );
+
       return;
     }
 
-    Alert.alert("Saved", "Support request updated.");
+    Alert.alert(
+      "Saved",
+      "Support request updated."
+    );
+
     setSelectedRequest(null);
     setAdminResponse("");
-    loadAdminData();
+
+    await loadAdminData();
   }
 
   if (loading) {
     return (
       <AppPage>
-        <PageHeader title="Admin" subtitle="Loading dashboard..." />
+        <PageHeader
+          title="Admin"
+          subtitle="Loading dashboard..."
+        />
       </AppPage>
     );
   }
@@ -128,59 +305,159 @@ export default function AdminScreen() {
   if (!allowed) {
     return (
       <AppPage>
-        <PageHeader title="Admin" subtitle="You do not have access to this page." />
+        <PageHeader
+          title="Admin"
+          subtitle="You do not have access to this page."
+        />
       </AppPage>
     );
   }
 
-  const totalUsers = subscriptions.length;
-  const trials = subscriptions.filter((item) => item.status === "trialing").length;
-  const active = subscriptions.filter((item) => item.status === "active").length;
-  const pastDue = subscriptions.filter((item) => item.status === "past_due").length;
-  const canceled = subscriptions.filter((item) => item.status === "canceled").length;
-  const inactive = subscriptions.filter((item) => item.status === "inactive").length;
+  const totalUsers =
+    subscriptions.length;
+
+  const trials =
+    subscriptions.filter(
+      (item) =>
+        item.status === "trialing"
+    ).length;
+
+  const active =
+    subscriptions.filter(
+      (item) =>
+        item.status === "active"
+    ).length;
+
+  const pastDue =
+    subscriptions.filter(
+      (item) =>
+        item.status === "past_due"
+    ).length;
+
+  const canceled =
+    subscriptions.filter(
+      (item) =>
+        item.status === "canceled"
+    ).length;
+
+  const inactive =
+    subscriptions.filter(
+      (item) =>
+        item.status === "inactive"
+    ).length;
 
   const activeMrr = active * 5.99;
-  const trialPipeline = trials * 5.99;
-  const paidOrTrial = active + trials;
-  const conversionRate = totalUsers > 0 ? (active / totalUsers) * 100 : 0;
-  const churnRate = totalUsers > 0 ? (canceled / totalUsers) * 100 : 0;
+  const trialPipeline =
+    trials * 5.99;
+
+  const paidOrTrial =
+    active + trials;
+
+  const conversionRate =
+    totalUsers > 0
+      ? (active / totalUsers) *
+        100
+      : 0;
+
+  const churnRate =
+    totalUsers > 0
+      ? (canceled / totalUsers) *
+        100
+      : 0;
 
   const filteredSubscriptions =
-    filter === "all" ? subscriptions : subscriptions.filter((item) => item.status === filter);
+    filter === "all"
+      ? subscriptions
+      : subscriptions.filter(
+          (item) =>
+            item.status === filter
+        );
 
   if (selectedRequest) {
-    const requestType = selectedRequest.issue_type ?? selectedRequest.type ?? "general";
+    const requestType =
+      selectedRequest.issue_type ??
+      selectedRequest.type ??
+      "general";
 
     return (
       <AppPage>
-        <PageHeader title="Support Request" subtitle="Review and update this ticket." />
+        <PageHeader
+          title="Support Request"
+          subtitle="Review and update this ticket."
+        />
 
         <AppCard>
           <View style={{ gap: 12 }}>
-            <AppText variant="title">{selectedRequest.subject}</AppText>
-            <AppText variant="muted">Email: {selectedRequest.email ?? "No email"}</AppText>
-            <AppText variant="muted">Type: {requestType.replaceAll("_", " ")}</AppText>
-            <AppText variant="muted">Status: {selectedRequest.status}</AppText>
-            <AppText variant="muted">Created: {formatDate(selectedRequest.created_at)}</AppText>
+            <AppText variant="title">
+              {selectedRequest.subject}
+            </AppText>
 
-            <AppText>{selectedRequest.message}</AppText>
+            <AppText variant="muted">
+              Email:{" "}
+              {selectedRequest.email ??
+                "No email"}
+            </AppText>
+
+            <AppText variant="muted">
+              Type:{" "}
+              {requestType.replaceAll(
+                "_",
+                " "
+              )}
+            </AppText>
+
+            <AppText variant="muted">
+              Status:{" "}
+              {selectedRequest.status}
+            </AppText>
+
+            <AppText variant="muted">
+              Created:{" "}
+              {formatDate(
+                selectedRequest.created_at
+              )}
+            </AppText>
+
+            <AppText>
+              {selectedRequest.message}
+            </AppText>
 
             <AppInput
               label="Admin Response / Notes"
               value={adminResponse}
-              onChangeText={setAdminResponse}
+              onChangeText={
+                setAdminResponse
+              }
               placeholder="Write your response or internal note..."
               multiline
             />
 
-            <AppButton title="Mark In Progress" onPress={() => updateSupportStatus("in_progress")} />
-            <AppButton title="Mark Closed" onPress={() => updateSupportStatus("closed")} />
+            <AppButton
+              title="Mark In Progress"
+              onPress={() =>
+                updateSupportStatus(
+                  "in_progress"
+                )
+              }
+            />
+
+            <AppButton
+              title="Mark Closed"
+              onPress={() =>
+                updateSupportStatus(
+                  "closed"
+                )
+              }
+            />
+
             <AppButton
               title="Back to Support Queue"
               variant="secondary"
               onPress={() => {
-                setSelectedRequest(null);
+                setSelectedRequest(
+                  null
+                );
+
                 setAdminResponse("");
               }}
             />
@@ -197,72 +474,179 @@ export default function AdminScreen() {
         subtitle="Track users, trials, subscriptions, revenue, and support."
       />
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
-          <MetricCard title="Users" value={String(totalUsers)} caption="Total accounts" tone="primary" />
+          <MetricCard
+            title="Users"
+            value={String(
+              totalUsers
+            )}
+            caption="Total accounts"
+            tone="primary"
+          />
         </View>
+
         <View style={{ flex: 1 }}>
-          <MetricCard title="Trials" value={String(trials)} caption="Free month" tone="warning" />
+          <MetricCard
+            title="Trials"
+            value={String(trials)}
+            caption="Free month"
+            tone="warning"
+          />
         </View>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+        }}
+      >
         <View style={{ flex: 1 }}>
-          <MetricCard title="Active" value={String(active)} caption="Paid users" tone="success" />
+          <MetricCard
+            title="Active"
+            value={String(active)}
+            caption="Paid users"
+            tone="success"
+          />
         </View>
+
         <View style={{ flex: 1 }}>
-          <MetricCard title="MRR" value={`$${activeMrr.toFixed(2)}`} caption="Monthly revenue" tone="success" />
+          <MetricCard
+            title="MRR"
+            value={`$${activeMrr.toFixed(
+              2
+            )}`}
+            caption="Monthly revenue"
+            tone="success"
+          />
         </View>
       </View>
 
       <AppCard>
-        <AppText variant="section">Support Queue</AppText>
+        <AppText variant="section">
+          Support Queue
+        </AppText>
 
-        <View style={{ marginTop: 12, gap: 14 }}>
-          {supportRequests.length === 0 ? (
-            <AppText variant="muted">No support requests.</AppText>
+        <View
+          style={{
+            marginTop: 12,
+            gap: 14,
+          }}
+        >
+          {supportRequests.length ===
+          0 ? (
+            <AppText variant="muted">
+              No support requests.
+            </AppText>
           ) : (
-            supportRequests.map((request) => {
-              const requestType = request.issue_type ?? request.type ?? "general";
+            supportRequests.map(
+              (request) => {
+                const requestType =
+                  request.issue_type ??
+                  request.type ??
+                  "general";
 
-              return (
-                <AppCard key={request.id}>
-                  <View style={{ gap: 8 }}>
-                    <AppRow>
-                      <AppText variant="bold">{request.subject}</AppText>
-                      <AppText>{request.status}</AppText>
-                    </AppRow>
+                return (
+                  <AppCard
+                    key={request.id}
+                  >
+                    <View
+                      style={{ gap: 8 }}
+                    >
+                      <AppRow>
+                        <AppText variant="bold">
+                          {
+                            request.subject
+                          }
+                        </AppText>
 
-                    <AppText variant="muted">{request.email ?? "No email"}</AppText>
-                    <AppText variant="muted">{requestType.replaceAll("_", " ")}</AppText>
-                    <AppText>{request.message}</AppText>
-                    <AppText variant="muted">{formatDate(request.created_at)}</AppText>
+                        <AppText>
+                          {
+                            request.status
+                          }
+                        </AppText>
+                      </AppRow>
 
-                    <AppButton
-                      title="Open"
-                      onPress={() => {
-                        setSelectedRequest(request);
-                        setAdminResponse(request.admin_response ?? "");
-                      }}
-                    />
-                  </View>
-                </AppCard>
-              );
-            })
+                      <AppText variant="muted">
+                        {request.email ??
+                          "No email"}
+                      </AppText>
+
+                      <AppText variant="muted">
+                        {requestType.replaceAll(
+                          "_",
+                          " "
+                        )}
+                      </AppText>
+
+                      <AppText>
+                        {request.message}
+                      </AppText>
+
+                      <AppText variant="muted">
+                        {formatDate(
+                          request.created_at
+                        )}
+                      </AppText>
+
+                      <AppButton
+                        title="Open"
+                        onPress={() => {
+                          setSelectedRequest(
+                            request
+                          );
+
+                          setAdminResponse(
+                            request.admin_response ??
+                              ""
+                          );
+                        }}
+                      />
+                    </View>
+                  </AppCard>
+                );
+              }
+            )
           )}
         </View>
       </AppCard>
 
       <AppCard>
-        <AppText variant="section">Filters</AppText>
+        <AppText variant="section">
+          Filters
+        </AppText>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          {["all", "trialing", "active", "past_due", "inactive", "canceled"].map((status) => (
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: 12,
+          }}
+        >
+          {[
+            "all",
+            "trialing",
+            "active",
+            "past_due",
+            "inactive",
+            "canceled",
+          ].map((status) => (
             <FilterChip
               key={status}
               label={status}
-              active={filter === status}
-              onPress={() => setFilter(status)}
+              active={
+                filter === status
+              }
+              onPress={() =>
+                setFilter(status)
+              }
             />
           ))}
         </View>
@@ -270,50 +654,128 @@ export default function AdminScreen() {
 
       <AppCard>
         <AppRow>
-          <AppText variant="section">Users</AppText>
-          <AppText variant="muted">{filteredSubscriptions.length} shown</AppText>
+          <AppText variant="section">
+            Users
+          </AppText>
+
+          <AppText variant="muted">
+            {
+              filteredSubscriptions.length
+            }{" "}
+            shown
+          </AppText>
         </AppRow>
 
-        <View style={{ marginTop: 12, gap: 14 }}>
-          {filteredSubscriptions.length === 0 ? (
-            <AppText variant="muted">No users match this filter.</AppText>
+        <View
+          style={{
+            marginTop: 12,
+            gap: 14,
+          }}
+        >
+          {filteredSubscriptions.length ===
+          0 ? (
+            <AppText variant="muted">
+              No users match this
+              filter.
+            </AppText>
           ) : (
-            filteredSubscriptions.map((item) => <AdminUserRow key={item.user_id} item={item} />)
+            filteredSubscriptions.map(
+              (item) => (
+                <AdminUserRow
+                  key={item.user_id}
+                  item={item}
+                />
+              )
+            )
           )}
         </View>
       </AppCard>
 
       <AppCard>
-        <AppText variant="section">Business Health</AppText>
+        <AppText variant="section">
+          Business Health
+        </AppText>
 
-        <View style={{ marginTop: 12, gap: 8 }}>
+        <View
+          style={{
+            marginTop: 12,
+            gap: 8,
+          }}
+        >
           <AppRow>
-            <AppText variant="muted">Active + Trialing</AppText>
-            <AppText variant="bold">{paidOrTrial}</AppText>
+            <AppText variant="muted">
+              Active + Trialing
+            </AppText>
+
+            <AppText variant="bold">
+              {paidOrTrial}
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Conversion Rate</AppText>
-            <AppText variant="bold">{conversionRate.toFixed(1)}%</AppText>
+            <AppText variant="muted">
+              Conversion Rate
+            </AppText>
+
+            <AppText variant="bold">
+              {conversionRate.toFixed(
+                1
+              )}
+              %
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Churn Rate</AppText>
-            <AppText variant="bold">{churnRate.toFixed(1)}%</AppText>
+            <AppText variant="muted">
+              Churn Rate
+            </AppText>
+
+            <AppText variant="bold">
+              {churnRate.toFixed(1)}%
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Past Due</AppText>
-            <AppText variant="bold">{pastDue}</AppText>
+            <AppText variant="muted">
+              Past Due
+            </AppText>
+
+            <AppText variant="bold">
+              {pastDue}
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Inactive</AppText>
-            <AppText variant="bold">{inactive}</AppText>
+            <AppText variant="muted">
+              Inactive
+            </AppText>
+
+            <AppText variant="bold">
+              {inactive}
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Canceled</AppText>
-            <AppText variant="bold">{canceled}</AppText>
+            <AppText variant="muted">
+              Canceled
+            </AppText>
+
+            <AppText variant="bold">
+              {canceled}
+            </AppText>
           </AppRow>
+
           <AppRow>
-            <AppText variant="muted">Trial Pipeline</AppText>
-            <AppText variant="bold">${trialPipeline.toFixed(2)}</AppText>
+            <AppText variant="muted">
+              Trial Pipeline
+            </AppText>
+
+            <AppText variant="bold">
+              $
+              {trialPipeline.toFixed(
+                2
+              )}
+            </AppText>
           </AppRow>
         </View>
       </AppCard>
@@ -321,28 +783,83 @@ export default function AdminScreen() {
   );
 }
 
-function AdminUserRow({ item }: { item: SubscriptionRow }) {
+function AdminUserRow({
+  item,
+}: {
+  item: SubscriptionRow;
+}) {
+  const displayName =
+    item.display_name?.trim();
+
   return (
-    <View>
-      <AppRow>
-        <AppText variant="bold">{item.status}</AppText>
-        <AppText variant="muted">{formatDate(item.updated_at)}</AppText>
-      </AppRow>
+    <AppCard>
+      <View style={{ gap: 6 }}>
+        <AppRow>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bold">
+              {displayName ||
+                "Unnamed User"}
+            </AppText>
 
-      <AppText variant="muted">User: {shortId(item.user_id)}</AppText>
+            {!displayName ? (
+              <AppText variant="muted">
+                User:{" "}
+                {shortId(
+                  item.user_id
+                )}
+              </AppText>
+            ) : null}
+          </View>
 
-      {item.trial_end ? (
-        <AppText variant="muted">Trial ends: {formatDate(item.trial_end)}</AppText>
-      ) : null}
+          <AppText variant="bold">
+            {formatStatus(
+              item.status
+            )}
+          </AppText>
+        </AppRow>
 
-      {item.current_period_end ? (
-        <AppText variant="muted">Period ends: {formatDate(item.current_period_end)}</AppText>
-      ) : null}
+        <AppText variant="muted">
+          Plan:{" "}
+          {formatStatus(
+            item.plan
+          )}
+        </AppText>
 
-      {item.stripe_customer_id ? (
-        <AppText variant="muted">Stripe: {shortId(item.stripe_customer_id)}</AppText>
-      ) : null}
-    </View>
+        <AppText variant="muted">
+          Updated:{" "}
+          {formatDate(
+            item.updated_at
+          )}
+        </AppText>
+
+        {item.trial_end ? (
+          <AppText variant="muted">
+            Trial ends:{" "}
+            {formatDate(
+              item.trial_end
+            )}
+          </AppText>
+        ) : null}
+
+        {item.current_period_end ? (
+          <AppText variant="muted">
+            Period ends:{" "}
+            {formatDate(
+              item.current_period_end
+            )}
+          </AppText>
+        ) : null}
+
+        {item.stripe_customer_id ? (
+          <AppText variant="muted">
+            Stripe:{" "}
+            {shortId(
+              item.stripe_customer_id
+            )}
+          </AppText>
+        ) : null}
+      </View>
+    </AppCard>
   );
 }
 
@@ -363,22 +880,45 @@ function FilterChip({
         borderRadius: 999,
         paddingVertical: 8,
         paddingHorizontal: 14,
-        opacity: active ? 1 : 0.65,
+        opacity: active
+          ? 1
+          : 0.65,
       }}
     >
-      <AppText variant="bold">{label}</AppText>
+      <AppText variant="bold">
+        {formatStatus(label)}
+      </AppText>
     </Pressable>
   );
 }
 
 function shortId(value: string) {
-  if (!value) return "";
-  if (value.length <= 12) return value;
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  if (!value) {
+    return "";
+  }
+
+  if (value.length <= 12) {
+    return value;
+  }
+
+  return `${value.slice(
+    0,
+    6
+  )}...${value.slice(-4)}`;
+}
+
+function formatStatus(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) =>
+      letter.toUpperCase()
+    );
 }
 
 function formatDate(date: string) {
-  return new Date(date).toLocaleDateString("en-US", {
+  return new Date(
+    date
+  ).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",

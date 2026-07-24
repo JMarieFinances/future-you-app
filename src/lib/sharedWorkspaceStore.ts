@@ -99,21 +99,47 @@ type ProfileRow = {
 
 async function requireUser() {
   const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!user) {
-    throw new Error(
-      "You must be signed in."
+  if (sessionError) {
+    console.error(
+      "Unable to read auth session:",
+      sessionError
     );
   }
 
-  return user;
+  if (session?.user) {
+    return session.user;
+  }
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      console.error(
+        "Unable to verify current user:",
+        userError
+      );
+    }
+
+    if (user) {
+      return user;
+    }
+  } catch (error) {
+    console.error(
+      "Current user request failed:",
+      error
+    );
+  }
+
+  throw new Error(
+    "Your session could not be loaded. Please sign in again."
+  );
 }
 
 function normalizeEmail(value: string) {
@@ -222,6 +248,41 @@ async function getCurrentUserRole(
     (data?.role as WorkspaceRole) ??
     "viewer"
   );
+}
+
+async function removeWorkspaceFromAppData({
+  type,
+  localWorkspaceId,
+}: {
+  type: WorkspaceType;
+  localWorkspaceId?: string | null;
+}) {
+  if (!localWorkspaceId) {
+    return;
+  }
+
+  await updateAppData((app) => {
+    app.households ??= [];
+    app.businesses ??= [];
+
+    if (type === "household") {
+      app.households =
+        app.households.filter(
+          (household) =>
+            household.id !==
+            localWorkspaceId
+        );
+
+      return;
+    }
+
+    app.businesses =
+      app.businesses.filter(
+        (business) =>
+          business.id !==
+          localWorkspaceId
+      );
+  });
 }
 
 async function mergeWorkspacesIntoAppData(
@@ -502,13 +563,6 @@ export async function getSharedWorkspaceByLocalId(
   } as SharedWorkspace;
 }
 
-/**
- * Loads every workspace the current user owns
- * or has joined through workspace_members.
- *
- * This uses the SECURITY DEFINER RPC so RLS
- * cannot silently hide accepted workspaces.
- */
 export async function getSharedWorkspaces(
   type?: WorkspaceType
 ): Promise<SharedWorkspace[]> {
@@ -648,13 +702,29 @@ export async function syncSharedWorkspace(
 export async function deleteSharedWorkspace(
   workspaceId: string
 ) {
-  await requireUser();
+  const user = await requireUser();
+
+  const workspace =
+    await getSharedWorkspace(
+      workspaceId
+    );
+
+  if (
+    workspace.owner_id !== user.id ||
+    workspace.current_user_role !==
+      "owner"
+  ) {
+    throw new Error(
+      "Only the workspace owner can delete this workspace."
+    );
+  }
 
   const { data, error } =
     await supabase
       .from("shared_workspaces")
       .delete()
       .eq("id", workspaceId)
+      .eq("owner_id", user.id)
       .select("id")
       .maybeSingle();
 
@@ -668,7 +738,64 @@ export async function deleteSharedWorkspace(
     );
   }
 
+  await removeWorkspaceFromAppData({
+    type: workspace.type,
+    localWorkspaceId:
+      workspace.local_workspace_id ??
+      workspace.workspace_data?.id,
+  });
+
   return data.id;
+}
+
+export async function leaveSharedWorkspace(
+  workspaceId: string
+) {
+  await requireUser();
+
+  const workspace =
+    await getSharedWorkspace(
+      workspaceId
+    );
+
+  if (
+    workspace.current_user_role ===
+    "owner"
+  ) {
+    throw new Error(
+      "Workspace owners cannot leave. Delete the workspace instead."
+    );
+  }
+
+  const {
+    data: membershipId,
+    error,
+  } = await supabase.rpc(
+    "leave_shared_workspace",
+    {
+      target_workspace_id:
+        workspaceId,
+    }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!membershipId) {
+    throw new Error(
+      "You could not leave this workspace."
+    );
+  }
+
+  await removeWorkspaceFromAppData({
+    type: workspace.type,
+    localWorkspaceId:
+      workspace.local_workspace_id ??
+      workspace.workspace_data?.id,
+  });
+
+  return String(membershipId);
 }
 
 export async function inviteWorkspaceMember({
